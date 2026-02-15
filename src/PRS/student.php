@@ -1,6 +1,6 @@
 <?php
 // Check if a customer with a given email has purchased a specific product
-function has_customer_purchased_product_by_email($email, $product_id) {
+function hhhas_customer_purchased_product_by_email($email, $product_id) {
     if (!$email || !$product_id) {
         return false;
     }
@@ -80,7 +80,7 @@ function display_all_entries_for_students($atts) {
 
                 $university   = "Faculty: $faculty\nDepartment: $department\nMatric Number: $matric_no";
 
-                $has_purchased = has_customer_purchased_product_by_email($email, 12293) ? "Yes" : "No";
+                $has_purchased = hhhas_customer_purchased_product_by_email($email, 12293) ? "Yes" : "No";
 
                 $student_id   = rgar($entry, '7');
                 $date_added   = date('M j, Y - g:i a', strtotime($entry['date_created']));

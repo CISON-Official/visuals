@@ -1,6 +1,6 @@
 <?php
 // Check if a customer with a given email has purchased a specific product
-function has_customer_purchased_product_by_email($email, $product_id) {
+function hhas_customer_purchased_product_by_email($email, $product_id) {
     if (!$email || !$product_id) {
         return false;
     }
@@ -74,7 +74,7 @@ function gemini_display_all_entries_for_company($atts) {
                 $date_added = date('M j, Y - g:i a', strtotime($entry['date_created']));
 
                 // Check if email purchased the product (replace 12293 with your product ID)
-                $has_purchased = has_customer_purchased_product_by_email($email, 12293) ? "Yes" : "No";
+                $has_purchased = hhas_customer_purchased_product_by_email($email, 12293) ? "Yes" : "No";
 
                 $output .= '<tr style="border-bottom:1px solid #eee;">';
                 $output .= '<td>' . esc_html($name) . '</td>';
