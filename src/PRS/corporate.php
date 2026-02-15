@@ -1,4 +1,5 @@
 <?php
+// Check if a customer with a given email has purchased a specific product
 function has_customer_purchased_product_by_email($email, $product_id) {
     if (!$email || !$product_id) {
         return false;
@@ -25,37 +26,36 @@ function has_customer_purchased_product_by_email($email, $product_id) {
  * Shortcode to display Gravity Forms entries (excluding deleted/trashed)
  * Usage: [all_user_entries form_id="15"]
  */
-function gemini_display_all_entries_gf( $atts ) {
-    $a = shortcode_atts( array(
+function gemini_display_all_entries_gf($atts) {
+    $a = shortcode_atts([
         'form_id' => '15',
-    ), $atts );
+    ], $atts);
 
-    // Restrict to admins (optional)
-    if ( ! current_user_can( 'manage_options' ) ) {
+    // Restrict access to admins
+    if (!current_user_can('manage_options')) {
         return '<div class="bb-alert">Access Denied: You do not have permission to view all entries.</div>';
     }
 
-    $form_id = intval( $a['form_id'] );
+    $form_id = intval($a['form_id']);
     $output  = '<div class="all-entries-container">';
 
-    if ( class_exists( 'GFAPI' ) ) {
+    if (class_exists('GFAPI')) {
 
         // Only ACTIVE entries (exclude trash/deleted)
-        $search_criteria = array(
+        $search_criteria = [
             'status' => 'active'
-        );
+        ];
 
         $entries = GFAPI::get_entries(
             $form_id,
             $search_criteria,
-            array( 'key' => 'date_created', 'direction' => 'DESC' ),
-            array( 'offset' => 0, 'page_size' => 100 )
+            ['key' => 'date_created', 'direction' => 'DESC'],
+            ['offset' => 0, 'page_size' => 100]
         );
 
-        if ( ! is_wp_error( $entries ) && ! empty( $entries ) ) {
+        if (!is_wp_error($entries) && !empty($entries)) {
 
             $output .= '<table class="entry-table" style="width:100%; border-collapse: collapse;">';
-            // <th style="padding:10px;">Ref #</th>
             $output .= '<thead style="color:#fff;">
                 <tr>
                     <th>Name</th>
@@ -65,50 +65,39 @@ function gemini_display_all_entries_gf( $atts ) {
                     <th>Questions</th>
                     <th>Heard About PRS</th>
                     <th>Date Submitted</th>
-                    <th> Has Paid </th>
+                    <th>Has Paid</th>
                 </tr>
             </thead><tbody>';
 
-            foreach ( $entries as $entry ) {
+            foreach ($entries as $entry) {
 
-
-                // Name field (ID 20)
-                $first_name = rgar( $entry, '20.3' );
-                $last_name  = rgar( $entry, '20.6' );
-                $name       = trim( $first_name . ' ' . $last_name );
+                // Combine first and last name (fields 20.3 & 20.6)
+                $first_name = rgar($entry, '20.3');
+                $last_name  = rgar($entry, '20.6');
+                $name       = trim($first_name . ' ' . $last_name);
 
                 // Other fields
-                $email     = rgar( $entry, '21' );
-                $company   = rgar( $entry, '19' );
-                $position  = rgar( $entry, '7' );
-                $questions = rgar( $entry, '8' );
-                $heard     = rgar( $entry, '22' );
+                $email     = rgar($entry, '21');
+                $company   = rgar($entry, '19');
+                $position  = rgar($entry, '7');
+                $questions = rgar($entry, '8');
+                $heard     = rgar($entry, '22');
 
-                $entry_id   = intval( $entry['id'] );
-                $date_added = date( 'M j, Y - g:i a', strtotime( $entry['date_created'] ) );
+                $entry_id   = intval($entry['id']);
+                $date_added = date('M j, Y - g:i a', strtotime($entry['date_created']));
 
-                $edit_link = admin_url(
-                    'admin.php?page=gf_entries&view=entry&id=' . $form_id . '&lid=' . $entry_id
-                );
-
-                if (has_customer_purchased_product_by_email($email, 12293)) {
-    
-                    $has_purchased = "Yes";
-                } else {
-                    $has_purchased = "No";
-                }
+                // Check if email purchased the product (replace 12293 with your product ID)
+                $has_purchased = has_customer_purchased_product_by_email($email, 12293) ? "Yes" : "No";
 
                 $output .= '<tr style="border-bottom:1px solid #eee;">';
-                // $output .= '<td style="padding:10px;">#' . esc_html( $entry_id ) . '</td>';
-                $output .= '<td>' . esc_html( $name ) . '</td>';
-                $output .= '<td>' . esc_html( $email ) . '</td>';
-                $output .= '<td>' . esc_html( $company ) . '</td>';
-                $output .= '<td>' . esc_html( $position ) . '</td>';
-                $output .= '<td>' . esc_html( $questions ) . '</td>';
-                $output .= '<td>' . esc_html( $heard ) . '</td>';
-                $output .= '<td>' . esc_html( $date_added ) . '</td>';
-                // $output .= '<td><a href="' . esc_url( $edit_link ) . '" class="view-btn">Edit Entry</a></td>';
-                $output .= '<td>' . esc_html($has_purchased ) . '</td>';
+                $output .= '<td>' . esc_html($name) . '</td>';
+                $output .= '<td>' . esc_html($email) . '</td>';
+                $output .= '<td>' . esc_html($company) . '</td>';
+                $output .= '<td>' . esc_html($position) . '</td>';
+                $output .= '<td>' . esc_html($questions) . '</td>';
+                $output .= '<td>' . esc_html($heard) . '</td>';
+                $output .= '<td>' . esc_html($date_added) . '</td>';
+                $output .= '<td>' . esc_html($has_purchased) . '</td>';
                 $output .= '</tr>';
             }
 
@@ -117,6 +106,7 @@ function gemini_display_all_entries_gf( $atts ) {
         } else {
             $output .= '<p>No active entries found for this form.</p>';
         }
+
     } else {
         $output .= '<p>Gravity Forms is not active.</p>';
     }
@@ -124,4 +114,6 @@ function gemini_display_all_entries_gf( $atts ) {
     $output .= '</div>';
     return $output;
 }
-add_shortcode( 'all_user_entries', 'gemini_display_all_entries_gf' );
+
+// Register shortcode
+add_shortcode('all_user_entries', 'gemini_display_all_entries_gf');
