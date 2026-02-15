@@ -1,20 +1,19 @@
 <?php
 /**
  * Plugin Name: Visuals
- * Description: visuals for CISON WordPress Application
+ * Description: Visuals for CISON WordPress Application
  * Version: 1.0.0
- * Author: cison
+ * Author: CISON
  */
 
 if (!defined('ABSPATH')) {
-    exit;
+    exit; // Exit if accessed directly
 }
 
+// Define main plugin path
 define('MAIN_PATH', plugin_dir_path(__FILE__));
 
-require_once("src/PRS/corporate.php");
-require_once("src/PRS/student.php");
-require_once("src/PRS/company.php");
-
-
-
+// Include required files
+require_once MAIN_PATH . 'src/PRS/corporate.php';
+require_once MAIN_PATH . 'src/PRS/student.php';
+require_once MAIN_PATH . 'src/PRS/company.php';
