@@ -1,6 +1,6 @@
 <?php
 /**
- * Shortcode to display Gravity Forms entries with specific fields
+ * Shortcode to display Gravity Forms entries (excluding deleted/trashed)
  * Usage: [all_user_entries form_id="15"]
  */
 function gemini_display_all_entries_gf( $atts ) {
@@ -18,9 +18,14 @@ function gemini_display_all_entries_gf( $atts ) {
 
     if ( class_exists( 'GFAPI' ) ) {
 
+        // Only ACTIVE entries (exclude trash/deleted)
+        $search_criteria = array(
+            'status' => 'active'
+        );
+
         $entries = GFAPI::get_entries(
             $form_id,
-            array(),
+            $search_criteria,
             array( 'key' => 'date_created', 'direction' => 'DESC' ),
             array( 'offset' => 0, 'page_size' => 100 )
         );
@@ -28,9 +33,9 @@ function gemini_display_all_entries_gf( $atts ) {
         if ( ! is_wp_error( $entries ) && ! empty( $entries ) ) {
 
             $output .= '<table class="entry-table" style="width:100%; border-collapse: collapse;">';
-            $output .= '<thead style="background:#222;color:#fff;">
+            $output .= '<thead style="color:#fff;">
                 <tr>
-                    <th style="padding:10px;">Ref #</th>
+                    // <th style="padding:10px;">Ref #</th>
                     <th>Name</th>
                     <th>Email</th>
                     <th>Company</th>
@@ -38,7 +43,6 @@ function gemini_display_all_entries_gf( $atts ) {
                     <th>Questions</th>
                     <th>Heard About PRS</th>
                     <th>Date Submitted</th>
-                    <th>Action</th>
                 </tr>
             </thead><tbody>';
 
@@ -72,14 +76,14 @@ function gemini_display_all_entries_gf( $atts ) {
                 $output .= '<td>' . esc_html( $questions ) . '</td>';
                 $output .= '<td>' . esc_html( $heard ) . '</td>';
                 $output .= '<td>' . esc_html( $date_added ) . '</td>';
-                $output .= '<td><a href="' . esc_url( $edit_link ) . '" class="view-btn">Edit Entry</a></td>';
+                // $output .= '<td><a href="' . esc_url( $edit_link ) . '" class="view-btn">Edit Entry</a></td>';
                 $output .= '</tr>';
             }
 
             $output .= '</tbody></table>';
 
         } else {
-            $output .= '<p>No entries found for this form.</p>';
+            $output .= '<p>No active entries found for this form.</p>';
         }
     } else {
         $output .= '<p>Gravity Forms is not active.</p>';
