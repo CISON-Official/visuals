@@ -13,6 +13,8 @@ if (!defined('ABSPATH')) {
 define('MAIN_PATH', plugin_dir_path(__FILE__));
 
 require_once("src/PRS/corporate.php");
+require_once("src/PRS/student.php");
+require_once("src/PRS/company.php");
 
 
 

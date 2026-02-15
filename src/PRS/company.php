@@ -22,10 +22,10 @@ function has_customer_purchased_product_by_email($email, $product_id) {
 }
 
 /**
- * Shortcode to display Gravity Forms entries (excluding deleted/trashed)
- * Usage: [all_user_entries form_id="15"]
+ * Shortcode to display gravity forms for the comanies
  */
-function gemini_display_all_entries_gf( $atts ) {
+
+function gemini_display_all_entries_for_company( $atts ) {
     $a = shortcode_atts( array(
         'form_id' => '15',
     ), $atts );
@@ -58,12 +58,9 @@ function gemini_display_all_entries_gf( $atts ) {
             // <th style="padding:10px;">Ref #</th>
             $output .= '<thead style="color:#fff;">
                 <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Company</th>
-                    <th>Position</th>
-                    <th>Questions</th>
-                    <th>Heard About PRS</th>
+                    <th>Organization Name</th>
+                    <th>Organization Email</th>
+                    <th>How may People Registered?</th>
                     <th>Date Submitted</th>
                     <th> Has Paid </th>
                 </tr>
@@ -73,16 +70,13 @@ function gemini_display_all_entries_gf( $atts ) {
 
 
                 // Name field (ID 20)
-                $first_name = rgar( $entry, '20.3' );
-                $last_name  = rgar( $entry, '20.6' );
-                $name       = trim( $first_name . ' ' . $last_name );
+                $name = rgar( $entry, '14.3' );
+                // $last_name  = rgar( $entry, '14.6' );
+                // $name       = trim( $first_name . ' ' . $last_name );
 
                 // Other fields
-                $email     = rgar( $entry, '21' );
-                $company   = rgar( $entry, '19' );
-                $position  = rgar( $entry, '7' );
-                $questions = rgar( $entry, '8' );
-                $heard     = rgar( $entry, '22' );
+                $email     = rgar( $entry, '14.6' );
+                $register   = rgar( $entry, '20' );
 
                 $entry_id   = intval( $entry['id'] );
                 $date_added = date( 'M j, Y - g:i a', strtotime( $entry['date_created'] ) );
@@ -102,10 +96,7 @@ function gemini_display_all_entries_gf( $atts ) {
                 // $output .= '<td style="padding:10px;">#' . esc_html( $entry_id ) . '</td>';
                 $output .= '<td>' . esc_html( $name ) . '</td>';
                 $output .= '<td>' . esc_html( $email ) . '</td>';
-                $output .= '<td>' . esc_html( $company ) . '</td>';
-                $output .= '<td>' . esc_html( $position ) . '</td>';
-                $output .= '<td>' . esc_html( $questions ) . '</td>';
-                $output .= '<td>' . esc_html( $heard ) . '</td>';
+                $output .= '<td>' . esc_html( $register ) . '</td>';
                 $output .= '<td>' . esc_html( $date_added ) . '</td>';
                 // $output .= '<td><a href="' . esc_url( $edit_link ) . '" class="view-btn">Edit Entry</a></td>';
                 $output .= '<td>' . esc_html($has_purchased ) . '</td>';
@@ -124,4 +115,4 @@ function gemini_display_all_entries_gf( $atts ) {
     $output .= '</div>';
     return $output;
 }
-add_shortcode( 'all_user_entries', 'gemini_display_all_entries_gf' );
+add_shortcode( 'all_user_entries_for_company', 'gemini_display_all_entries_gf' );
