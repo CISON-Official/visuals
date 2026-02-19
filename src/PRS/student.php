@@ -31,8 +31,11 @@ function display_all_entries_for_students($atts) {
         'form_id' => '15',
     ], $atts);
 
+   $current_user = wp_get_current_user();
+    $allowed_users = array(938);
+
     // Restrict access to admins
-    if (!current_user_can('manage_options')) {
+    if (!current_user_can('manage_options') || !in_array($current_user->ID, $allowed_users)) {
         return '<div class="bb-alert">Access Denied: You do not have permission to view all entries.</div>';
     }
 
