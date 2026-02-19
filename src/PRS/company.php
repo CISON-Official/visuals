@@ -31,12 +31,13 @@ function gemini_display_all_entries_for_company($atts) {
     ], $atts);
 
     $current_user = wp_get_current_user();
-    $allowed_users = array(938);
+    $allowed_users = array(938, 2459);
 
     // Restrict access to admins
-    if (!current_user_can('manage_options') || !in_array($current_user->ID, $allowed_users)) {
+    if (!in_array($current_user->ID, $allowed_users)) {
         return '<div class="bb-alert">Access Denied: You do not have permission to view all entries.</div>';
     }
+    
     $form_id = intval($a['form_id']);
     $output  = '<div class="all-entries-container">';
 
