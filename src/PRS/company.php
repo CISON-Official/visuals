@@ -70,8 +70,8 @@ function gemini_display_all_entries_for_company($atts) {
 
             foreach ($entries as $entry) {
 
-                $name      = rgar($entry, '14.3'); // Name field
-                $email     = rgar($entry, '14.6'); // Email field
+                $name      = rgar($entry, '11.3'); // Name field
+                $email     = rgar($entry, '11.6'); // Email field
                 $register  = rgar($entry, '20');   // Registered people
                 $entry_id  = intval($entry['id']);
                 $date_added = date('M j, Y - g:i a', strtotime($entry['date_created']));
