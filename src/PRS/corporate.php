@@ -91,7 +91,7 @@ function gemini_display_all_entries_gf($atts) {
                 // Check if email purchased the product (replace 12293 with your product ID)
                 $has_purchased = has_customer_purchased_product_by_email($email, 12293) ? "Yes" : "No";
 
-                $output .= '<tr style="border-bottom:1px solid #eee;">';
+                $output .= '<tr style="border-bottom:1px solid #eee;font-size:12px">';
                 $output .= '<td>' . esc_html($name) . '</td>';
                 $output .= '<td>' . esc_html($email) . '</td>';
                 $output .= '<td>' . esc_html($company) . '</td>';

@@ -17,3 +17,5 @@ define('MAIN_PATH', plugin_dir_path(__FILE__));
 require_once MAIN_PATH . 'src/PRS/corporate.php';
 require_once MAIN_PATH . 'src/PRS/student.php';
 require_once MAIN_PATH . 'src/PRS/company.php';
+require_once MAIN_PATH . 'src/profile/email.php';
+
