@@ -108,3 +108,36 @@ function custom_email_content_template() {
     </div>
     <?php
 }
+
+/**
+ * Dynamically change the "From" email to the logged-in user's email
+ */
+add_filter( 'wp_mail_from', function ( $original_email ) {
+    if ( is_user_logged_in() ) {
+        $current_user = wp_get_current_user();
+        $allowed_users = array(938, 2459);
+
+        if (!in_array($current_user->ID, $allowed_users)) {
+            return $current_user->user_email; 
+        }
+        return $original_email;
+    }
+    return $original_email;
+});
+
+
+/**
+ * Dynamically change the "From" name to the logged-in user's display name
+ */
+add_filter( 'wp_mail_from_name', function ( $original_name ) {
+    if ( is_user_logged_in() ) {
+        $current_user = wp_get_current_user();
+        $allowed_users = array(938, 2459);
+
+        if (!in_array($current_user->ID, $allowed_users)) {
+            return $current_user->display_name; 
+        }
+        return $original_name;
+    }
+    return $original_name;
+});
