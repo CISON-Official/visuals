@@ -18,4 +18,7 @@ require_once MAIN_PATH . 'src/PRS/corporate.php';
 require_once MAIN_PATH . 'src/PRS/student.php';
 require_once MAIN_PATH . 'src/PRS/company.php';
 require_once MAIN_PATH . 'src/profile/email.php';
+require_once MAIN_PATH . 'src/profile/certificate.php';
+
+require_once MAIN_PATH . 'src/forms/conference.php';
 
