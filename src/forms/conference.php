@@ -254,6 +254,7 @@ function add_registration_script() {
                     $('.cart-status').html('❌ Error: ' + (response.data || 'Try again'));
                     $('#pay-submit').prop('disabled', true);
                 }
+                console.log(response.data);
             });
         }
         
