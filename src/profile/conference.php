@@ -28,7 +28,7 @@ function add_secure_to_profile_tag() {
     ));
 }
 
-function view_secure_screen_fixed() {
+function view_secure_screen() {
     add_action('bp_template_content', 'secure_links_content');
     bp_core_load_template('members/single/plugins');
 }
