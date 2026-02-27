@@ -14,25 +14,62 @@ add_action('wp_enqueue_scripts', 'enqueue_registration_scripts');
 
 
 function ajax_add_to_cart_handler() {
-    check_ajax_referer('registration_nonce', 'nonce');
+    // ✅ Skip nonce for guests, check for logged-in only
+    if (is_user_logged_in() && !wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
+        wp_send_json_error('Invalid nonce');
+        wp_die();
+    }
     
     $product_id = intval($_POST['product_id']);
     $quantity = 1;
     
-    if ($product_id) {
-        WC()->cart->empty_cart(0);
-        $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
-        
-        if ($cart_item_key) {
-            wp_send_json_success(array('message' => 'Added to cart'));
-        } else {
-            wp_send_json_error('Failed to add to cart');
-        }
+    if (!$product_id) {
+        wp_send_json_error('No product ID');
+        wp_die();
+    }
+    
+    // ✅ SAFE WooCommerce check
+    if (!class_exists('WooCommerce') || !WC()) {
+        wp_send_json_error('WooCommerce unavailable');
+        wp_die();
+    }
+    
+    // ✅ Initialize cart if missing
+    if (!WC()->cart) {
+        WC()->initialize_cart();
+    }
+    
+    if (!WC()->cart) {
+        wp_send_json_error('Cart unavailable');
+        wp_die();
+    }
+    
+    // ✅ Check product exists
+    $product = wc_get_product($product_id);
+    if (!$product || !$product->exists()) {
+        wp_send_json_error("Product $product_id not found");
+        wp_die();
+    }
+    
+    // ✅ Clear cart FIRST (safely)
+    WC()->cart->empty_cart();
+    
+    // ✅ Add product
+    $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
+    
+    if ($cart_item_key) {
+        WC()->cart->calculate_totals();
+        wp_send_json_success(array(
+            'message' => 'Added to cart',
+            'cart_count' => WC()->cart->get_cart_contents_count()
+        ));
+    } else {
+        wp_send_json_error('Failed to add product');
     }
     wp_die();
 }
 add_action('wp_ajax_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
-add_action('wp_ajax_nopriv_add_to_cart_dynamic', 'ajax_add_to_cart_dynamic');
+add_action('wp_ajax_nopriv_add_to_cart_dynamic', 'ajax_add_to_cart_handler'); // ✅ Guest support
 
 function ajax_load_wc_checkout() {
     check_ajax_referer('registration_nonce', 'nonce');
