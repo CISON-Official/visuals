@@ -218,6 +218,9 @@ function add_registration_script() {
         var conference_id = 6623;
         var workshop_id = 6647;
         var virtual_id = 6625;
+        var workshop_conference_id = 12670;
+        var workshop_virtual_id = 12672;
+
         
         // Auto-add to cart when selection changes
         $('#registering_for').on('change', function() {
@@ -236,13 +239,11 @@ function add_registration_script() {
             } else if (selection === 'workshop') {
                 addToCart(workshop_id);
             } else if (selection === 'both') {
-                addToCart(workshop_id);
-                addToCart(conference_id);
+                addToCart(workshop_conference_id);
             } else if (selection === 'virtual') {
                 addToCart(virtual_id);
             } else if (selection === 'virtual_both') {
-                addToCart(workshop_id);
-                addToCart(virtual_id);
+                addToCart(workshop_virtual_id);
             } else {
                 $('.cart-status').text('Please select registration option');
                 $('#pay-submit').prop('disabled', true);
