@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 define('MAIN_PATH', plugin_dir_path(__FILE__));
 
 // Database Initialization
-require_once MAIN_PATH . 'src/database.php';
+// require_once MAIN_PATH . 'src/database.php';
 
 // Database Function Initialization
 require_once MAIN_PATH . 'src/db/conference.php';
