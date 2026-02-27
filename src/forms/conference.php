@@ -52,6 +52,7 @@ add_action('wp_ajax_nopriv_load_wc_checkout', 'ajax_load_wc_checkout');
 
 function registration_form_with_checkout_shortcode() {
     ob_start();
+    ajax_clear_cart();
     ?>
     <div class="registration-container">
         <form id="registration-form" method="post" novalidate>
@@ -179,8 +180,7 @@ function registration_form_with_checkout_shortcode() {
             </div>
 
             <button type="submit" class="btn btn-primary btn-lg w-100" id="pay-submit" disabled>
-                <!-- <span class="cart-status">Please select registration option</span> -->
-                <i class="fas fa-credit-card me-2"></i>Proceed to Payment & Submit
+                Proceed to Payment & Submit
             </button>
         </form>
 
@@ -314,6 +314,21 @@ function add_registration_script() {
 }
 add_action('wp_enqueue_scripts', 'add_registration_script');
 
+function ajax_clear_cart() {
+    // check_ajax_referer('registration_nonce', 'nonce');
+    if ( ! function_exists( 'WC' ) ) {
+        return '0';
+    }
+    
+    $count = WC()->cart->get_cart_contents_count();
+    if ($count > 0) {
+        WC()->cart->empty_cart();
+        do_action('woocommerce_cart_emptied');
+    }
+    
+    // wp_send_json_success('Cart cleared');
+}
+
 
 function handle_registration_submit() {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['member_id'])) {
@@ -354,5 +369,8 @@ function handle_registration_submit() {
         exit;
     }
 }
+// add_action('wp_ajax_woocommerce_clear_cart', 'ajax_clear_cart');
+// add_action('wp_ajax_nopriv_woocommerce_clear_cart', 'ajax_clear_cart');
+
 add_action('init', 'handle_registration_submit');
 ?>
