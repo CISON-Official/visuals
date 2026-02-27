@@ -250,6 +250,7 @@ function add_registration_script() {
         });
         
         function addToCart(product_id) {
+            console.log('Adding to cart: '+ product_id);
             $.post(ajax_object.ajax_url, {
                 action: 'add_to_cart_dynamic',
                 product_id: product_id,
