@@ -221,6 +221,12 @@ function add_registration_script() {
         
         // Auto-add to cart when selection changes
         $('#registering_for').on('change', function() {
+        
+            $.post(ajax_object.ajax_url, {
+                action: 'clear_cart',
+                nonce: ajax_object.nonce
+            });            
+
             var selection = $(this).val();
             $('.cart-status').text('Adding to cart...');
             $('#pay-submit').prop('disabled', true);
@@ -360,8 +366,8 @@ function handle_registration_submit() {
         exit;
     }
 }
-// add_action('wp_ajax_woocommerce_clear_cart', 'ajax_clear_cart');
-// add_action('wp_ajax_nopriv_woocommerce_clear_cart', 'ajax_clear_cart');
+add_action('wp_ajax_clear_cart', 'ajax_clear_cart');
+add_action('wp_ajax_nopriv_clear_cart', 'ajax_clear_cart');
 
 add_action('init', 'handle_registration_submit');
 ?>
