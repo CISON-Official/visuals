@@ -215,13 +215,13 @@ function add_registration_script() {
     $script = "
     jQuery(document).ready(function($) {
         // UPDATE THESE PRODUCT IDs FROM YOUR WOOCCOMMERCE PRODUCTS
-        var conference_id = 6647;
-        var workshop_id = 6623;
+        var conference_id = 6623;
+        var workshop_id = 6647;
         var virtual_id = 6625;
         
         // Auto-add to cart when selection changes
         $('#registering_for').on('change', function() {
-        
+
             $.post(ajax_object.ajax_url, {
                 action: 'clear_cart',
                 nonce: ajax_object.nonce
