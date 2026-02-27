@@ -318,11 +318,16 @@ function ajax_clear_cart() {
     if ( ! function_exists( 'WC' ) ) {
         return '0';
     }
-    
-    $count = WC()->cart->get_cart_contents_count();
-    if ($count > 0) {
-        WC()->cart->empty_cart();
-        do_action('woocommerce_cart_emptied');
+
+    if (!WC()->cart) {
+        WC()->initialize_cart();
+    }
+    if (WC()->cart) {
+        $count = WC()->cart->get_cart_contents_count();
+        if ($count > 0) {
+            WC()->cart->empty_cart();
+            do_action('woocommerce_cart_emptied');
+        }
     }
     
     // wp_send_json_success('Cart cleared');
