@@ -38,4 +38,12 @@ function create_nsa_registration_table() {
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
 }
-register_activation_hook(__FILE__, 'create_nsa_registration_table');
+
+function create_databases() {
+    global $wpdb;
+    $conference = $wpdb->prefix . 'nsa_registrations';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '$conference'") !== $conference) {
+        create_nsa_registration_table();
+    };
+}
