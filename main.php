@@ -23,6 +23,7 @@ require_once MAIN_PATH . 'src/PRS/company.php';
 
 require_once MAIN_PATH . 'src/profile/email.php';
 require_once MAIN_PATH . 'src/profile/certificate.php';
+require_once MAIN_PATH . 'src/profile/secure.php';
 require_once MAIN_PATH . 'src/profile/conference.php';
 
 require_once MAIN_PATH . 'src/forms/conference.php';
