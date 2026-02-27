@@ -252,11 +252,16 @@ function add_registration_script() {
         
         function addToCart(product_id) {
             console.log('Adding to cart: '+ product_id);
-            $.post(ajax_object.ajax_url, {
+
+            var postData = {
                 action: 'add_to_cart_dynamic',
-                product_id: product_id,
-                nonce: ajax_object.nonce
-            }, function(response) {
+                product_id: product_id
+            };
+            
+            if (ajax_object.nonce && ajax_object.user_logged_in !== false) {
+                postData.nonce = ajax_object.nonce;
+            }
+            $.post(ajax_object.ajax_url, postData, function(response) {
                 if (response.success) {
                     $('.cart-status').html('✅ Item added! Ready to pay');
                     $('#pay-submit').prop('disabled', false);
@@ -264,7 +269,12 @@ function add_registration_script() {
                     $('.cart-status').html('❌ Error: ' + (response.data || 'Try again'));
                     $('#pay-submit').prop('disabled', true);
                 }
-                console.log(response);
+                console.log('Response:',response);
+            }).fail(function(xhr, status, error) {
+                console.error('AJAX Error:', error);
+                $('.cart-status').html('❌ Network error - try again');
+                $('#pay-submit').prop('disabled', true);
+                console.log('AJAX Error:', error);
             });
         }
         
