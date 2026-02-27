@@ -31,3 +31,6 @@ require_once MAIN_PATH . 'src/profile/conference.php';
 
 require_once MAIN_PATH . 'src/forms/conference.php';
 
+add_action('init', function () {
+    SRC/Database();
+});

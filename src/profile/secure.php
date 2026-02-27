@@ -14,9 +14,9 @@ function add_secure_to_profile_tag() {
         return;
     }
 
-    // if (bp_is_my_profile()) {
-    //     return ;
-    // }
+    if (!bp_is_my_profile()) {
+        return ;
+    }
 
     bp_core_new_nav_item(array(
         'name' => __('Secure', 'textdomain'),
