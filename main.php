@@ -31,6 +31,7 @@ function visuals_init_database() {
 
 // Register activation hook
 register_activation_hook(__FILE__, 'visuals_init_database');
+add_action('admin_init', 'nsa_maybe_update_database');
 
 // 3. Core Database Logic
 require_once VISUALS_PATH . 'src/db/conference.php';
