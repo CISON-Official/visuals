@@ -274,7 +274,7 @@ function add_registration_script() {
                 console.error('AJAX Error:', error);
                 $('.cart-status').html('❌ Network error - try again');
                 $('#pay-submit').prop('disabled', true);
-                console.log('AJAX Error:', error);
+                console.log('AJAX Error:', error, xhr, status);
             });
         }
         
