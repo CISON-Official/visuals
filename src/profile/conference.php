@@ -28,9 +28,13 @@ function add_secure_to_profile_tag() {
     ));
 }
 
-function view_secure_screen() {
-    add_action('bp_template_content', 'list_secure_links_content_template');
-    bb_core_load_template(apply_filters('bp_core_template_loader', 'members/single/plugins'));
+function view_secure_screen_fixed() {
+    add_action('bp_template_content', 'secure_links_content');
+    bp_core_load_template('members/single/plugins');
+}
+
+function secure_links_content() {
+    echo list_secure_links_content_template();
 }
 
 function list_secure_links_content_template() {
