@@ -21,13 +21,13 @@ register_activation_hook(__FILE__, 'nsa_create_registrations_table');
 require_once MAIN_PATH . 'src/db/conference.php';
 
 // Include required files
-require_once MAIN_PATH . 'src/PRS/corporate.php';
-require_once MAIN_PATH . 'src/PRS/student.php';
-require_once MAIN_PATH . 'src/PRS/company.php';
+// require_once MAIN_PATH . 'src/PRS/corporate.php';
+// require_once MAIN_PATH . 'src/PRS/student.php';
+// require_once MAIN_PATH . 'src/PRS/company.php';
 
-require_once MAIN_PATH . 'src/profile/email.php';
-require_once MAIN_PATH . 'src/profile/certificate.php';
-require_once MAIN_PATH . 'src/profile/secure.php';
-require_once MAIN_PATH . 'src/profile/conference.php';
+// require_once MAIN_PATH . 'src/profile/email.php';
+// require_once MAIN_PATH . 'src/profile/certificate.php';
+// require_once MAIN_PATH . 'src/profile/secure.php';
+// require_once MAIN_PATH . 'src/profile/conference.php';
 
-require_once MAIN_PATH . 'src/forms/conference.php';
+// require_once MAIN_PATH . 'src/forms/conference.php';
