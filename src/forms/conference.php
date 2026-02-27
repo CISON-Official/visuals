@@ -52,7 +52,7 @@ add_action('wp_ajax_nopriv_load_wc_checkout', 'ajax_load_wc_checkout');
 
 function registration_form_with_checkout_shortcode() {
     ob_start();
-    ajax_clear_cart();
+    // ajax_clear_cart();
     ?>
     <div class="registration-container">
         <form id="registration-form" method="post" novalidate>
