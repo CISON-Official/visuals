@@ -42,13 +42,13 @@ function list_secure_links_content_template() {
     ?>
     <div class="u-6d3e91a2">
         <header class="u-b5c412f8">
-            <h2><i class="fas fa-database"></i> 2025 Attendance & Records</h2>
-            <p>Access the master tables for certificates and registration data.</p>
+            <h2> View and Access Secure Links</h2>
+            <p>Access view and access secure links.</p>
         </header>
 
         <ul class="u-8b4e1350">
             <li class="u-2f9a71d2">
-                <a href="/admin/preconference-attendees" class="u-f4e19b22">
+                <a href="https://my.cison.org.ng/verify-certificate/" class="u-f4e19b22">
                     <div class="u-1d3c5b7a"><i class="fas fa-users-cog"></i></div>
                     <div class="u-e9b2c8f1">
                         <h4>Preconference Attendees</h4>
@@ -59,7 +59,7 @@ function list_secure_links_content_template() {
             </li>
 
             <li class="u-2f9a71d2">
-                <a href="/admin/conference-attendees" class="u-f4e19b22">
+                <a href="https://my.cison.org.ng/2025-conference-certificate/" class="u-f4e19b22">
                     <div class="u-1d3c5b7a"><i class="fas fa-users"></i></div>
                     <div class="u-e9b2c8f1">
                         <h4>Conference Attendees</h4>
@@ -70,7 +70,7 @@ function list_secure_links_content_template() {
             </li>
 
             <li class="u-2f9a71d2">
-                <a href="/admin/prs-registrants" class="u-f4e19b22">
+                <a href="https://my.cison.org.ng/corporate-registration/" class="u-f4e19b22">
                     <div class="u-1d3c5b7a"><i class="fas fa-address-book"></i></div>
                     <div class="u-e9b2c8f1">
                         <h4>PRS Registration List</h4>
@@ -83,7 +83,6 @@ function list_secure_links_content_template() {
     </div>
 
     <style>
-    /* Container Wrapper - u-6d3e91a2 */
         .u-6d3e91a2 {
             max-width: 1100px;
             margin: 40px auto;
@@ -91,7 +90,6 @@ function list_secure_links_content_template() {
             font-family: 'Inter', -apple-system, sans-serif;
         }
 
-        /* Header Section - u-b5c412f8 */
         .u-b5c412f8 {
             margin-bottom: 40px;
             border-bottom: 2px solid #f0f0f0;
@@ -100,7 +98,6 @@ function list_secure_links_content_template() {
         .u-b5c412f8 h2 { color: #1a202c; font-size: 1.8rem; margin-bottom: 8px; }
         .u-b5c412f8 p { color: #718096; }
 
-        /* Grid UL - u-8b4e1350 */
         .u-8b4e1350 {
             list-style: none;
             padding: 0;
@@ -109,7 +106,6 @@ function list_secure_links_content_template() {
             gap: 24px;
         }
 
-        /* Link Card - u-f4e19b22 */
         .u-f4e19b22 {
             text-decoration: none;
             background: #ffffff;
@@ -126,7 +122,6 @@ function list_secure_links_content_template() {
             background-color: #f7fafc;
         }
 
-        /* Icon Box - u-1d3c5b7a */
         .u-1d3c5b7a {
             width: 54px;
             height: 54px;
@@ -141,11 +136,9 @@ function list_secure_links_content_template() {
             flex-shrink: 0;
         }
 
-        /* Content Area - u-e9b2c8f1 */
         .u-e9b2c8f1 h4 { margin: 0 0 6px 0; font-size: 1.15rem; color: #2d3748; }
         .u-e9b2c8f1 p { font-size: 0.9rem; color: #4a5568; margin-bottom: 16px; line-height: 1.5; }
 
-        /* CTA Text - u-a73c91eb */
         .u-a73c91eb {
             font-weight: 600;
             color: #3182ce;
