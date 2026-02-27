@@ -230,11 +230,13 @@ function add_registration_script() {
             } else if (selection === 'workshop') {
                 addToCart(workshop_id);
             } else if (selection === 'both') {
-                addToCartMultiple([conference_id, workshop_id]);
+                addToCart(workshop_id);
+                addToCart(conference_id);
             } else if (selection === 'virtual') {
                 addToCart(virtual_id);
             } else if (selection === 'virtual_both') {
-                addToCartMultiple([virtual_id, workshop_id]);
+                addToCart(workshop_id);
+                addToCart(virtual_id);
             } else {
                 $('.cart-status').text('Please select registration option');
                 $('#pay-submit').prop('disabled', true);
@@ -258,17 +260,6 @@ function add_registration_script() {
             });
         }
         
-        function addToCartMultiple(ids) {
-            $.post(ajax_object.ajax_url, {
-                action: 'add_to_cart_dynamic',
-                product_id: ids[0],
-                nonce: ajax_object.nonce
-            }, function(response) {
-                if (response.success) {
-                    addToCart(ids[1]); // Add second item
-                }
-            });
-        }
         
         // Form submit → Open checkout modal
         $('#registration-form').on('submit', function(e) {
