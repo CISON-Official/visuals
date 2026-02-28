@@ -14,66 +14,53 @@ function enqueue_registration_scripts()
 add_action('wp_enqueue_scripts', 'enqueue_registration_scripts');
 
 
-function ajax_add_to_cart_handler()
-{
+function ajax_add_to_cart_handler() {
+    if (is_user_logged_in() && !wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
+        wp_send_json_error('Invalid nonce');
+        wp_die();
+    }
+    
     $product_id = intval($_POST['product_id']);
     $quantity = 1;
-
+    
     if (!$product_id) {
         wp_send_json_error('No product ID');
         wp_die();
     }
-
+    
     if (!class_exists('WooCommerce') || !WC()) {
         wp_send_json_error('WooCommerce unavailable');
         wp_die();
     }
-
+    
     if (!WC()->cart) {
         WC()->initialize_cart();
     }
-
+    
     if (!WC()->cart) {
         wp_send_json_error('Cart unavailable');
         wp_die();
     }
-
-    if (is_user_logged_in()) {
-        check_ajax_referer('registration_nonce', 'nonce');
-        if ($product_id) {
-            WC()->cart->empty_cart(0);
-            $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
-
-            if ($cart_item_key) {
-                wp_send_json_success(array('message' => 'Added to cart', 'user' => 'User is logged in'));
-            } else {
-                wp_send_json_error(array('message' => 'Failed to add product', 'user' => 'User is logged in'));
-            }
-        }
-    } else {
-
-        $product = wc_get_product($product_id);
-        if (!$product) {
-            wp_send_json_error("Product $product_id not found");
-            wp_die();
-        }
-
-        WC()->cart->empty_cart();
-
-        $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
-
-        if ($cart_item_key) {
-            WC()->cart->calculate_totals();
-            wp_send_json_success(array(
-                'message' => 'Added to cart',
-                'cart_count' => WC()->cart->get_cart_contents_count(),
-                'user' => 'User is not logged in'
-            ));
-        } else {
-            wp_send_json_error(array('message' => 'Failed to add product', 'user' => 'User is not logged in'));
-        }
+    
+    $product = wc_get_product($product_id);
+    if (!$product || !$product->exists()) {
+        wp_send_json_error("Product $product_id not found");
+        wp_die();
     }
-
+    
+    WC()->cart->empty_cart();
+    
+    $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
+    
+    if ($cart_item_key) {
+        WC()->cart->calculate_totals();
+        wp_send_json_success(array(
+            'message' => 'Added to cart',
+            'cart_count' => WC()->cart->get_cart_contents_count()
+        ));
+    } else {
+        wp_send_json_error('Failed to add product');
+    }
     wp_die();
 }
 add_action('wp_ajax_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
