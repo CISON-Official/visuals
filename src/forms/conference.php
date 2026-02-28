@@ -47,7 +47,7 @@ function ajax_add_to_cart_handler()
             if ($cart_item_key) {
                 wp_send_json_success(array('message' => 'Added to cart', 'user' => 'User is logged in'));
             } else {
-                wp_send_json_error(array('message' => 'Failed to add product', 'user' => 'User is not logged in'));
+                wp_send_json_error(array('message' => 'Failed to add product', 'user' => 'User is logged in'));
             }
         }
     } else {
