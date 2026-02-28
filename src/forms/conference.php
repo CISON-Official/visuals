@@ -50,6 +50,7 @@ function ajax_add_to_cart_handler() {
         }
     }
     else {
+        
         $product = wc_get_product($product_id);
         if (!$product) {
             wp_send_json_error("Product $product_id not found");
@@ -70,11 +71,7 @@ function ajax_add_to_cart_handler() {
             wp_send_json_error('Failed to add product');
         }
     }
-    
-    
-    
-    
-    
+        
     wp_die();
 }
 add_action('wp_ajax_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
@@ -316,6 +313,11 @@ function add_registration_script() {
                     $('#pay-submit').prop('disabled', true);
                 }
                 console.log('Response:',response);
+                if (ajax_object.user_logged_in) {
+                    console.log('User is logged in');
+                } else {
+                    console.log('User is not logged in')
+                }
             }).fail(function(xhr, status, error) {
                 console.error('AJAX Error:', error);
                 $('.cart-status').html('❌ Network error - try again');
