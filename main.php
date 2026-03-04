@@ -51,7 +51,10 @@ require_once VISUALS_PATH . 'src/profile/conference.php';
 require_once VISUALS_PATH . 'src/forms/conference.php';
 
 
-add_filter( 'option_woocommerce_enable_guest_checkout', '__return_string_yes' );
+add_filter( 'option_woocommerce_enable_guest_checkout', function() {
+    return 'yes';
+} );
+
 
 add_filter( 'option_woocommerce_enable_signup_and_login_from_checkout', '__return_string_yes' );
 
