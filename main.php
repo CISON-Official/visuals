@@ -68,3 +68,11 @@ function allow_unauthenticated_checkout($is_required)
 {
     return false;
 }
+
+add_filter('bp_no_access_redirect', function ($redirect_url, $args) {
+
+    if (function_exists('is_checkout') && (is_checkout() || is_wc_endpoint_url('order-received'))) {
+        return false;
+    }
+    return $redirect_url;
+}, 10, 2);
