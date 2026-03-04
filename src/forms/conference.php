@@ -14,44 +14,45 @@ function enqueue_registration_scripts()
 add_action('wp_enqueue_scripts', 'enqueue_registration_scripts');
 
 
-function ajax_add_to_cart_handler() {
+function ajax_add_to_cart_handler()
+{
     if (is_user_logged_in() && !wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
         wp_send_json_error('Invalid nonce');
         wp_die();
     }
-    
+
     $product_id = intval($_POST['product_id']);
     $quantity = 1;
-    
+
     if (!$product_id) {
         wp_send_json_error('No product ID');
         wp_die();
     }
-    
+
     if (!class_exists('WooCommerce') || !WC()) {
         wp_send_json_error('WooCommerce unavailable');
         wp_die();
     }
-    
+
     if (!WC()->cart) {
         WC()->initialize_cart();
     }
-    
+
     if (!WC()->cart) {
         wp_send_json_error('Cart unavailable');
         wp_die();
     }
-    
+
     $product = wc_get_product($product_id);
     if (!$product || !$product->exists()) {
         wp_send_json_error("Product $product_id not found");
         wp_die();
     }
-    
+
     WC()->cart->empty_cart();
-    
+
     $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
-    
+
     if ($cart_item_key) {
         WC()->cart->calculate_totals();
         wp_send_json_success(array(
@@ -352,6 +353,12 @@ function add_registration_script()
                 alert('Please select registration option and add to cart first');
                 return;
             }
+            $.post(ajax_object.ajax_url,{
+                action: 'save_nsa_registration_on_payment_success',
+                nonce: ajax_object.nonce
+            }, (response) => {
+                console.log('Database: ', response)
+            });
             
             // Load checkout
             $.post(ajax_object.ajax_url, {
@@ -408,6 +415,52 @@ function ajax_clear_cart()
 
     // wp_send_json_success('Cart cleared');
 }
+
+function ajax_save_nsa_registration_on_payment_success($order_id)
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'nsa_registrations';
+
+    $data = array(
+        'member_id' => $_POST['member_id'] ?? '',
+        'registering_for' => $_POST['registering_for'] ?? '',
+        'title' => $_POST['title'] ?? '',
+        'first_name' => $_POST['first_name'] ?? '',
+        'last_name' => $_POST['last_name'] ?? '',
+        'email' => $_POST['email'] ?? '',
+        'phone' => $_POST['phone'] ?? '',
+        'occupation' => $_POST['occupation'] ?? '',
+        'organisation' => $_POST['organisation'] ?? '',
+        'street' => $_POST['street'] ?? '',
+        'city' => $_POST['city'] ?? '',
+        'state' => $_POST['state'] ?? '',
+        'postcode' => $_POST['postcode'] ?? '',
+        'country' => $_POST['country'] ?? 'NG',
+        'gender' => $_POST['gender'] ?? '',
+        'hear_about' => $_POST['hear_about'] ?? '',
+        'order_id' => $_POST['orderid'] ?? '',
+        'payment_status' => 'pending',
+        'ip_address' => $_POST['REMOTE_ADDR'] ?? ''
+    );
+
+    $wpdb->insert($table_name, $data);
+
+    // WC()->session->__unset('nsa_registration_data');
+
+    // $admin_email = get_option('admin_email');
+    // $subject = '✅ NSA Registration Complete - Order #' . $order_id;
+    // $message = "Payment successful!\n\n";
+    // $message .= "Member ID: " . $data['member_id'] . "\n";
+    // $message .= "Name: " . $data['title'] . ' ' . $data['first_name'] . ' ' . $data['last_name'] . "\n";
+    // $message .= "Email: " . $data['email'] . "\n";
+    // $message .= "Order: " . $order_id . "\n";
+
+    // wp_mail($admin_email, $subject, $message);
+    return true;
+}
+
+add_action('wp_ajax_ajax_save_nsa_registration_on_payment_success', 'ajax_save_nsa_registration_on_payment_success');
+add_action('wp_ajax_nopriv_ajax_save_nsa_registration_on_payment_success', 'ajax_save_nsa_registration_on_payment_success');
 
 
 function handle_registration_submit()
