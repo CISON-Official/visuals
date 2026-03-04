@@ -85,7 +85,7 @@ function cison_custom_guest_access_control() {
     if ( ! $is_allowed && ! is_page('login') && ! strpos($current_uri, 'wp-login.php') ) {
         // Use the BuddyBoss specific "no access" redirect
         bp_core_no_access( array(
-            'root'     => home_url( '/login/' ), // Change to your specific login page slug
+            'root'     => home_url( '/wp-login.php' ), // Change to your specific login page slug
             'redirect' => home_url( $current_uri ),
             'mode'     => 1 // 1 = Redirect to login
         ) );
