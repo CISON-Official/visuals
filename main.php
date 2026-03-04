@@ -51,43 +51,5 @@ require_once VISUALS_PATH . 'src/profile/conference.php';
 // 6. User Forms
 require_once VISUALS_PATH . 'src/forms/conference.php';
 
-
-add_action( 'bp_template_redirect', 'cison_custom_guest_access_control', 1 );
-
-function cison_custom_guest_access_control() {
-    // 1. If the user is already logged in, do nothing
-    if ( is_user_logged_in() ) {
-        return;
-    }
-
-    // 2. Define your whitelist of public URIs
-    $public_uris = array(
-        '/checkout/',
-        '/checkout/order-received/',
-        '/register/',
-        '/activate/',
-        '/login/'
-    );
-
-    // 3. Get the current request URI
-    $current_uri = $_SERVER['REQUEST_URI'];
-
-    // 4. Check if the current URI starts with any of our whitelisted paths
-    $is_allowed = false;
-    foreach ( $public_uris as $uri ) {
-        if ( strpos( $current_uri, $uri ) !== false ) {
-            $is_allowed = true;
-            break;
-        }
-    }
-
-    // 5. If not allowed and not a standard WP login page, redirect to login
-    if ( ! $is_allowed && ! is_page('login') && ! strpos($current_uri, 'wp-login.php') ) {
-        // Use the BuddyBoss specific "no access" redirect
-        bp_core_no_access( array(
-            'root'     => home_url( '/wp-login.php' ), // Change to your specific login page slug
-            'redirect' => home_url( $current_uri ),
-            'mode'     => 1 // 1 = Redirect to login
-        ) );
-    }
-}
+// Authentication
+require_once VISUALS_PATH . 'src/auth.php';
