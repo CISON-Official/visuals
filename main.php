@@ -49,3 +49,16 @@ require_once VISUALS_PATH . 'src/profile/conference.php';
 
 // 6. User Forms
 require_once VISUALS_PATH . 'src/forms/conference.php';
+
+
+add_filter( 'option_woocommerce_enable_guest_checkout', '__return_string_yes' );
+
+add_filter( 'option_woocommerce_enable_signup_and_login_from_checkout', '__return_string_yes' );
+
+add_filter( 'woocommerce_cart_needs_payment', '__return_true' );
+
+add_filter( 'woocommerce_checkout_registration_required', 'allow_unauthenticated_checkout', 999 );
+
+function allow_unauthenticated_checkout( $is_required ) {
+    return false; 
+}
