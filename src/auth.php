@@ -9,6 +9,7 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
+        '',
         '/checkout/',
         '/checkout/order-received/',
         '/register/',
