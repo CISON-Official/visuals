@@ -23,7 +23,8 @@ require_once VISUALS_PATH . 'src/database.php';
  * Ensures the database table is created or updated.
  * We use a wrapper to ensure dbDelta logic is available.
  */
-function visuals_init_database() {
+function visuals_init_database()
+{
     if (function_exists('create_databases')) {
         create_databases();
     }
@@ -51,17 +52,19 @@ require_once VISUALS_PATH . 'src/profile/conference.php';
 require_once VISUALS_PATH . 'src/forms/conference.php';
 
 
-add_filter( 'option_woocommerce_enable_guest_checkout', function() {
+add_filter('option_woocommerce_enable_guest_checkout', function () {
     return 'yes';
-} );
+});
 
 
-add_filter( 'option_woocommerce_enable_signup_and_login_from_checkout', '__return_string_yes' );
+add_filter('option_woocommerce_enable_signup_and_login_from_checkout', function () {
+    return 'yes';
+});
+add_filter('woocommerce_cart_needs_payment', '__return_true');
 
-add_filter( 'woocommerce_cart_needs_payment', '__return_true' );
+add_filter('woocommerce_checkout_registration_required', 'allow_unauthenticated_checkout', 999);
 
-add_filter( 'woocommerce_checkout_registration_required', 'allow_unauthenticated_checkout', 999 );
-
-function allow_unauthenticated_checkout( $is_required ) {
-    return false; 
+function allow_unauthenticated_checkout($is_required)
+{
+    return false;
 }
