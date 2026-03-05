@@ -1,6 +1,6 @@
 <?php
 // Check if a customer with a given email has purchased a specific product
-function hhas_customer_purchased_product_by_email($email, $product_id)
+function remaining_customer_purchased_product_by_email($email, $product_id)
 {
     if (!$email || !$product_id) {
         return false;
@@ -26,7 +26,7 @@ function hhas_customer_purchased_product_by_email($email, $product_id)
 /**
  * Shortcode to display all Gravity Forms entries for companies
  */
-function gemini_display_all_entries_for_company($atts)
+function remaining_gemini_display_all_entries_for_company($atts)
 {
     $a = shortcode_atts([
         'form_id' => '15',
@@ -62,9 +62,9 @@ function gemini_display_all_entries_for_company($atts)
             $output .= '<table class="entry-table" style="width:100%; border-collapse: collapse;">';
             $output .= '<thead style="color:#fff;">
                 <tr>
-                    <th>Organization Name</th>
-                    <th>Organization Email</th>
-                    <th>How many People Registered?</th>
+                    <th>First Name</th>
+                    <th>Last Name</th>
+                    <th>Email</th>
                     <th>Date Submitted</th>
                     <th>Has Paid</th>
                 </tr>
@@ -72,19 +72,18 @@ function gemini_display_all_entries_for_company($atts)
 
             foreach ($entries as $entry) {
 
-                $name = rgar($entry, '11'); // Name field
-                $email = rgar($entry, '14'); // Email field
-                $register = rgar($entry, '20');   // Registered people
-                $entry_id = intval($entry['id']);
+                $name = rgar($entry, '1.3'); // Name field
+                $lastname = rgar($entry, '1.6'); // Email field
+                $email = rgar($entry, '3');   // Registered people
                 $date_added = date('M j, Y - g:i a', strtotime($entry['date_created']));
 
                 // Check if email purchased the product (replace 12293 with your product ID)
-                $has_purchased = hhas_customer_purchased_product_by_email($email, 12293) ? "Yes" : "No";
+                $has_purchased = remaining_customer_purchased_product_by_email($email, 12721) ? "Yes" : "No";
 
                 $output .= '<tr style="border-bottom:1px solid #eee;">';
                 $output .= '<td>' . esc_html($name) . '</td>';
+                $output .= '<td>' . esc_html($lastname) . '</td>';
                 $output .= '<td>' . esc_html($email) . '</td>';
-                $output .= '<td>' . esc_html($register) . '</td>';
                 $output .= '<td>' . esc_html($date_added) . '</td>';
                 $output .= '<td>' . esc_html($has_purchased) . '</td>';
                 $output .= '</tr>';
@@ -105,4 +104,4 @@ function gemini_display_all_entries_for_company($atts)
 }
 
 // Register shortcode
-add_shortcode('all_user_entries_for_company', 'gemini_display_all_entries_for_company');
+add_shortcode('all_users_paying_for_remaining_conference', 'remaining_gemini_display_all_entries_for_company');

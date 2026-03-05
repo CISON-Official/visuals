@@ -5,7 +5,8 @@
 
 add_action('bp_setup_nav', 'add_secure_to_profile_tag', 100);
 
-function add_secure_to_profile_tag() {
+function add_secure_to_profile_tag()
+{
     $current_user = wp_get_current_user();
 
     $allowed_users = array(938, 2459);
@@ -15,7 +16,7 @@ function add_secure_to_profile_tag() {
     }
 
     if (!bp_is_my_profile()) {
-        return ;
+        return;
     }
 
     bp_core_new_nav_item(array(
@@ -28,16 +29,19 @@ function add_secure_to_profile_tag() {
     ));
 }
 
-function view_secure_screen() {
+function view_secure_screen()
+{
     add_action('bp_template_content', 'secure_links_content');
     bp_core_load_template('members/single/plugins');
 }
 
-function secure_links_content() {
+function secure_links_content()
+{
     echo list_secure_links_content_template();
 }
 
-function list_secure_links_content_template() {
+function list_secure_links_content_template()
+{
     ob_start();
     ?>
     <div class="u-6d3e91a2">
@@ -79,6 +83,18 @@ function list_secure_links_content_template() {
                     </div>
                 </a>
             </li>
+            <li class="u-2f9a71d2">
+                <a href="https://my.cison.org.ng/2026-workshop-preconference-and-conference-registration-list/"
+                    class="u-f4e19b22">
+                    <div class="u-1d3c5b7a"><i class="fas fa-address-book"></i></div>
+                    <div class="u-e9b2c8f1">
+                        <h4>Conference Registration List</h4>
+                        <p>Comprehensive table of all individuals registering for 2026 conference sessions (virtual and
+                            on-site).</p>
+                        <span class="u-a73c91eb">View Registration Table <i class="fas fa-table"></i></span>
+                    </div>
+                </a>
+            </li>
         </ul>
     </div>
 
@@ -95,8 +111,16 @@ function list_secure_links_content_template() {
             border-bottom: 2px solid #f0f0f0;
             padding-bottom: 20px;
         }
-        .u-b5c412f8 h2 { color: #1a202c; font-size: 1.8rem; margin-bottom: 8px; }
-        .u-b5c412f8 p { color: #718096; }
+
+        .u-b5c412f8 h2 {
+            color: #1a202c;
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+        }
+
+        .u-b5c412f8 p {
+            color: #718096;
+        }
 
         .u-8b4e1350 {
             list-style: none;
@@ -136,8 +160,18 @@ function list_secure_links_content_template() {
             flex-shrink: 0;
         }
 
-        .u-e9b2c8f1 h4 { margin: 0 0 6px 0; font-size: 1.15rem; color: #2d3748; }
-        .u-e9b2c8f1 p { font-size: 0.9rem; color: #4a5568; margin-bottom: 16px; line-height: 1.5; }
+        .u-e9b2c8f1 h4 {
+            margin: 0 0 6px 0;
+            font-size: 1.15rem;
+            color: #2d3748;
+        }
+
+        .u-e9b2c8f1 p {
+            font-size: 0.9rem;
+            color: #4a5568;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
 
         .u-a73c91eb {
             font-weight: 600;
@@ -157,12 +191,18 @@ function list_secure_links_content_template() {
         }
 
         @media (max-width: 640px) {
-            .u-f4e19b22 { flex-direction: column; align-items: flex-start; }
-            .u-1d3c5b7a { margin-bottom: 15px; }
+            .u-f4e19b22 {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .u-1d3c5b7a {
+                margin-bottom: 15px;
+            }
         }
     </style>
 
-    
+
     <?php
     return ob_get_clean();
 }
