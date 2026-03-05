@@ -345,8 +345,9 @@ function add_registration_script()
         }
         
         
-        // Form submit → Open checkout modal
-        let valid = true;
+        $('#registration-form').on('submit', function(e) {
+            e.preventDefault();
+            let valid = true;
             $(this).find('[required]').each(function() {
                 if (!$(this).val().trim()) {
                     $(this).addClass('is-invalid');
@@ -360,7 +361,7 @@ function add_registration_script()
                 alert('Please complete all required fields and select registration.');
                 return;
             }
-            $.post(ajax_object.ajax_url, $(this).serialize() + '&action=save_nsa_registration_on_payment_success', function(response) {
+            $.post(ajax_object.ajax_url, $(this).serialize() + '&action=', function(response) {
                 if (response.success) {
                     // Redirect to checkout with registration ID
                     console.log('Data saved: ', response);
