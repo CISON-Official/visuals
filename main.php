@@ -41,6 +41,7 @@ require_once VISUALS_PATH . 'src/db/conference.php';
 require_once VISUALS_PATH . 'src/PRS/corporate.php';
 require_once VISUALS_PATH . 'src/PRS/student.php';
 require_once VISUALS_PATH . 'src/PRS/company.php';
+require_once VISUALS_PATH . 'src/PRS/remaining.php';
 
 // 5. Profile & Security Modules
 require_once VISUALS_PATH . 'src/profile/email.php';
