@@ -366,7 +366,7 @@ function add_registration_script()
                     // Redirect to checkout with registration ID
                     console.log('Data saved: ', response);
                 } else {
-                    alert('Save error: ' + response.data);
+                    console.log('Save error: ' + response);
                 }
             });
             // Load checkout
