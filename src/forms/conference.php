@@ -1,5 +1,7 @@
 <?php
-
+// ============================================================
+// 1. ENQUEUE SCRIPTS
+// ============================================================
 function enqueue_registration_scripts()
 {
     wp_enqueue_script('jquery');
@@ -14,6 +16,9 @@ function enqueue_registration_scripts()
 add_action('wp_enqueue_scripts', 'enqueue_registration_scripts');
 
 
+// ============================================================
+// 2. ADD TO CART (unchanged)
+// ============================================================
 function ajax_add_to_cart_handler()
 {
     if (is_user_logged_in() && !wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
@@ -28,16 +33,13 @@ function ajax_add_to_cart_handler()
         wp_send_json_error('No product ID');
         wp_die();
     }
-
     if (!class_exists('WooCommerce') || !WC()) {
         wp_send_json_error('WooCommerce unavailable');
         wp_die();
     }
-
     if (!WC()->cart) {
         WC()->initialize_cart();
     }
-
     if (!WC()->cart) {
         wp_send_json_error('Cart unavailable');
         wp_die();
@@ -50,7 +52,6 @@ function ajax_add_to_cart_handler()
     }
 
     WC()->cart->empty_cart();
-
     $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
 
     if ($cart_item_key) {
@@ -67,6 +68,10 @@ function ajax_add_to_cart_handler()
 add_action('wp_ajax_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
 add_action('wp_ajax_nopriv_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
 
+
+// ============================================================
+// 3. LOAD CHECKOUT (unchanged)
+// ============================================================
 function ajax_load_wc_checkout()
 {
     check_ajax_referer('registration_nonce', 'nonce');
@@ -77,20 +82,140 @@ function ajax_load_wc_checkout()
         $html = ob_get_clean();
         wp_send_json_success(array('html' => $html));
     } else {
-        wp_send_json_error('Cart is empty. Please select registration option.');
+        wp_send_json_error('Cart is empty. Please select a registration option.');
     }
     wp_die();
 }
 add_action('wp_ajax_load_wc_checkout', 'ajax_load_wc_checkout');
 add_action('wp_ajax_nopriv_load_wc_checkout', 'ajax_load_wc_checkout');
 
+
+// ============================================================
+// 4. CLEAR CART
+// ============================================================
+function ajax_clear_cart()
+{
+    if (!function_exists('WC')) {
+        wp_send_json_success('WC not loaded');
+        wp_die();
+    }
+    if (!WC()->cart) {
+        WC()->initialize_cart();
+    }
+    if (WC()->cart && WC()->cart->get_cart_contents_count() > 0) {
+        WC()->cart->empty_cart();
+        do_action('woocommerce_cart_emptied');
+    }
+    wp_send_json_success('Cart cleared');
+    wp_die();
+}
+add_action('wp_ajax_clear_cart', 'ajax_clear_cart');
+add_action('wp_ajax_nopriv_clear_cart', 'ajax_clear_cart');
+
+
+// ============================================================
+// 5. ✅ SAVE REGISTRATION — the fixed/new handler
+// ============================================================
+function ajax_save_registration()
+{
+    // Verify nonce (security)
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
+        wp_send_json_error('Security check failed');
+        wp_die();
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'nsa_registrations';
+
+    // Sanitize every field before touching the DB
+    $data = array(
+        'member_id' => sanitize_text_field($_POST['member_id'] ?? ''),
+        'registering_for' => sanitize_text_field($_POST['registering_for'] ?? ''),
+        'title' => sanitize_text_field($_POST['title'] ?? ''),
+        'first_name' => sanitize_text_field($_POST['first_name'] ?? ''),
+        'last_name' => sanitize_text_field($_POST['last_name'] ?? ''),
+        'email' => sanitize_email($_POST['email'] ?? ''),
+        'phone' => sanitize_text_field($_POST['phone'] ?? ''),
+        'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
+        'organisation' => sanitize_text_field($_POST['organisation'] ?? ''),
+        'street' => sanitize_text_field($_POST['street'] ?? ''),
+        'city' => sanitize_text_field($_POST['city'] ?? ''),
+        'state' => sanitize_text_field($_POST['state'] ?? ''),
+        'postcode' => sanitize_text_field($_POST['postcode'] ?? ''),
+        'country' => sanitize_text_field($_POST['country'] ?? 'NG'),
+        'gender' => sanitize_text_field($_POST['gender'] ?? ''),
+        'hear_about' => sanitize_text_field($_POST['hear_about'] ?? ''),
+        'payment_status' => 'pending',
+        'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+    );
+
+    // Basic required-field validation on the server side
+    $required = ['registering_for', 'title', 'first_name', 'last_name', 'email', 'phone', 'street', 'city', 'state', 'country', 'gender'];
+    foreach ($required as $field) {
+        if (empty($data[$field])) {
+            wp_send_json_error("Missing required field: $field");
+            wp_die();
+        }
+    }
+
+    // Validate email
+    if (!is_email($data['email'])) {
+        wp_send_json_error('Invalid email address');
+        wp_die();
+    }
+
+    // Insert into DB
+    $result = $wpdb->insert($table_name, $data);
+
+    if ($result !== false) {
+        wp_send_json_success(array(
+            'registration_id' => $wpdb->insert_id,
+            'message' => 'Registration saved successfully',
+        ));
+    } else {
+        wp_send_json_error('Database error: ' . $wpdb->last_error);
+    }
+    wp_die();
+}
+add_action('wp_ajax_save_registration', 'ajax_save_registration');
+add_action('wp_ajax_nopriv_save_registration', 'ajax_save_registration');
+
+
+// ============================================================
+// 6. UPDATE ORDER WITH REGISTRATION ID (called after payment)
+// ============================================================
+function link_registration_to_order($order_id)
+{
+    $registration_id = WC()->session ? WC()->session->get('nsa_registration_id') : 0;
+    if (!$registration_id)
+        return;
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'nsa_registrations';
+
+    $wpdb->update(
+        $table_name,
+        array('order_id' => $order_id, 'payment_status' => 'paid'),
+        array('id' => $registration_id),
+        array('%d', '%s'),
+        array('%d')
+    );
+
+    WC()->session->__unset('nsa_registration_id');
+}
+add_action('woocommerce_payment_complete', 'link_registration_to_order');
+
+
+// ============================================================
+// 7. SHORTCODE — form HTML (updated JS only)
+// ============================================================
 function registration_form_with_checkout_shortcode()
 {
     ob_start();
-    // ajax_clear_cart();
     ?>
     <div class="registration-container">
         <form id="registration-form" method="post" novalidate>
+
             <div class="mb-4">
                 <h5>Member ID <span class="text-danger">*</span> (Required)</h5>
                 <div class="row">
@@ -225,8 +350,10 @@ function registration_form_with_checkout_shortcode()
                 </select>
             </div>
 
+            <p class="cart-status text-muted"></p>
+
             <button type="submit" class="btn btn-primary btn-lg w-100" id="pay-submit" disabled>
-                Proceed to Payment & Submit
+                Proceed to Payment &amp; Submit
             </button>
         </form>
 
@@ -271,58 +398,49 @@ function registration_form_with_checkout_shortcode()
 add_shortcode('registration_wc_checkout', 'registration_form_with_checkout_shortcode');
 
 
+// ============================================================
+// 8. INLINE JS — updated to call save_registration first
+// ============================================================
 function add_registration_script()
 {
     $script = "
     jQuery(document).ready(function($) {
-        // UPDATE THESE PRODUCT IDs FROM YOUR WOOCCOMMERCE PRODUCTS
-        var conference_id = 6623;
-        var workshop_id = 6647;
-        var virtual_id = 6625;
+
+        var conference_id        = 6623;
+        var workshop_id          = 6647;
+        var virtual_id           = 6625;
         var workshop_conference_id = 12670;
-        var workshop_virtual_id = 12672;
+        var workshop_virtual_id  = 12672;
 
-        
-        // Auto-add to cart when selection changes
+        // ── Auto-add to cart on selection change ──────────────
         $('#registering_for').on('change', function() {
-
-            $.post(ajax_object.ajax_url, {
-                action: 'clear_cart',
-                nonce: ajax_object.nonce
-            });            
+            $.post(ajax_object.ajax_url, { action: 'clear_cart', nonce: ajax_object.nonce });
 
             var selection = $(this).val();
             $('.cart-status').text('Adding to cart...');
             $('#pay-submit').prop('disabled', true);
-            
-            if (selection === 'conference') {
-                addToCart(conference_id);
-            } else if (selection === 'workshop') {
-                addToCart(workshop_id);
-            } else if (selection === 'both') {
-                addToCart(workshop_conference_id);
-            } else if (selection === 'virtual') {
-                addToCart(virtual_id);
-            } else if (selection === 'virtual_both') {
-                addToCart(workshop_virtual_id);
+
+            var productMap = {
+                conference:   conference_id,
+                workshop:     workshop_id,
+                both:         workshop_conference_id,
+                virtual:      virtual_id,
+                virtual_both: workshop_virtual_id
+            };
+
+            if (productMap[selection]) {
+                addToCart(productMap[selection]);
             } else {
-                $('.cart-status').text('Please select registration option');
-                $('#pay-submit').prop('disabled', true);
+                $('.cart-status').text('Please select a registration option');
             }
         });
-        
-        function addToCart(product_id) {
-            console.log('Adding to cart: '+ product_id);
 
-            var postData = {
-                action: 'add_to_cart_dynamic',
-                product_id: product_id
-            };
-            
-            if (ajax_object.nonce && ajax_object.user_logged_in !== false) {
-                postData.nonce = ajax_object.nonce;
-            }
-            $.post(ajax_object.ajax_url, postData, function(response) {
+        function addToCart(product_id) {
+            $.post(ajax_object.ajax_url, {
+                action:     'add_to_cart_dynamic',
+                product_id: product_id,
+                nonce:      ajax_object.nonce
+            }, function(response) {
                 if (response.success) {
                     $('.cart-status').html('✅ Item added! Ready to pay');
                     $('#pay-submit').prop('disabled', false);
@@ -330,24 +448,18 @@ function add_registration_script()
                     $('.cart-status').html('❌ Error: ' + (response.data || 'Try again'));
                     $('#pay-submit').prop('disabled', true);
                 }
-                console.log('Response:',response);
-                if (ajax_object.user_logged_in) {
-                    console.log('User is logged in');
-                } else {
-                    console.log('User is not logged in')
-                }
-            }).fail(function(xhr, status, error) {
-                console.error('AJAX Error:', error);
+            }).fail(function() {
                 $('.cart-status').html('❌ Network error - try again');
                 $('#pay-submit').prop('disabled', true);
-                console.log('AJAX Error:', error, xhr, status);
             });
         }
-        
-        
+
+        // ── Form submit ───────────────────────────────────────
         $('#registration-form').on('submit', function(e) {
             e.preventDefault();
-            let valid = true;
+
+            // 1. Client-side validation
+            var valid = true;
             $(this).find('[required]').each(function() {
                 if (!$(this).val().trim()) {
                     $(this).addClass('is-invalid');
@@ -356,45 +468,65 @@ function add_registration_script()
                     $(this).removeClass('is-invalid');
                 }
             });
-            
-            if (!valid || $('#pay-submit').prop('disabled')) {
-                alert('Please complete all required fields and select registration.');
+
+            if ($('#registering_for').val() === '') {
+                alert('Please select a registration option first.');
                 return;
             }
-            $.post(ajax_object.ajax_url, $(this).serialize() + '&action=', function(response) {
-                if (response.success) {
-                    // Redirect to checkout with registration ID
-                    console.log('Data saved: ', response);
-                } else {
-                    console.log('Save error: ' + response);
-                }
-            });
-            // Load checkout
-            $.post(ajax_object.ajax_url, {
-                action: 'load_wc_checkout',
-                nonce: ajax_object.nonce
-            }, function(response) {
-                if (response.success) {
-                    $('#checkout-container').html(response.data.html);
-                    $('#checkoutModal').modal('show');
-                    
-                    // Re-init WooCommerce checkout
-                    $(document.body).trigger('update_checkout');
-                    $(document.body).trigger('wc_fragment_refresh');
-                } else {
-                    alert('Error: ' + response.data);
-                }
-            });
-        });
-        
-        // After payment modal closes, submit form
-        $('#checkoutModal').on('hidden.bs.modal', function() {
-            if (window.paymentCompleted) {
-                $('#registration-form')[0].submit();
+
+            var email        = $('[name=email]').val().trim();
+            var confirmEmail = $('[name=confirm_email]').val().trim();
+            if (email !== confirmEmail) {
+                alert('Email addresses do not match.');
+                $('[name=confirm_email]').addClass('is-invalid');
+                return;
             }
+
+            if (!valid) {
+                alert('Please complete all required fields.');
+                return;
+            }
+
+            // 2. ✅ SAVE REGISTRATION TO DB FIRST
+            var formData = $(this).serialize() + '&action=save_registration&nonce=' + ajax_object.nonce;
+
+            $('#pay-submit').prop('disabled', true).text('Saving...');
+
+            $.post(ajax_object.ajax_url, formData, function(response) {
+                if (response.success) {
+                    console.log('Registration saved. ID:', response.data.registration_id);
+
+                    // 3. Then load the WooCommerce checkout modal
+                    $.post(ajax_object.ajax_url, {
+                        action: 'load_wc_checkout',
+                        nonce:  ajax_object.nonce
+                    }, function(checkoutResponse) {
+                        if (checkoutResponse.success) {
+                            $('#checkout-container').html(checkoutResponse.data.html);
+                            $('#checkoutModal').modal('show');
+                            $(document.body).trigger('update_checkout');
+                            $(document.body).trigger('wc_fragment_refresh');
+                        } else {
+                            alert('Checkout error: ' + checkoutResponse.data);
+                        }
+                        $('#pay-submit').prop('disabled', false).text('Proceed to Payment & Submit');
+                    });
+
+                } else {
+                    alert('Could not save registration: ' + response.data);
+                    $('#pay-submit').prop('disabled', false).text('Proceed to Payment & Submit');
+                }
+            }).fail(function() {
+                alert('Network error. Please try again.');
+                $('#pay-submit').prop('disabled', false).text('Proceed to Payment & Submit');
+            });
         });
-        
-        // Detect payment success (WooCommerce event)
+
+        // ── Detect payment success ────────────────────────────
+        $('#checkoutModal').on('hidden.bs.modal', function() {
+            if (window.paymentCompleted) { location.reload(); }
+        });
+
         $(document.body).on('order_received updated_wc_div', function() {
             window.paymentCompleted = true;
         });
@@ -403,113 +535,3 @@ function add_registration_script()
     wp_add_inline_script('bootstrap-js', $script);
 }
 add_action('wp_enqueue_scripts', 'add_registration_script');
-
-function ajax_clear_cart()
-{
-    // check_ajax_referer('registration_nonce', 'nonce');
-    if (!function_exists('WC')) {
-        return '0';
-    }
-
-    if (!WC()->cart) {
-        WC()->initialize_cart();
-    }
-    if (WC()->cart) {
-        $count = WC()->cart->get_cart_contents_count();
-        if ($count > 0) {
-            WC()->cart->empty_cart();
-            do_action('woocommerce_cart_emptied');
-        }
-    }
-
-    // wp_send_json_success('Cart cleared');
-}
-
-function save_nsa_registration_on_payment_success($order_id)
-{
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'nsa_registrations';
-
-    $data = array(
-        'member_id' => $_POST['member_id'] ?? '',
-        'registering_for' => $_POST['registering_for'] ?? '',
-        'title' => $_POST['title'] ?? '',
-        'first_name' => $_POST['first_name'] ?? '',
-        'last_name' => $_POST['last_name'] ?? '',
-        'email' => $_POST['email'] ?? '',
-        'phone' => $_POST['phone'] ?? '',
-        'occupation' => $_POST['occupation'] ?? '',
-        'organisation' => $_POST['organisation'] ?? '',
-        'street' => $_POST['street'] ?? '',
-        'city' => $_POST['city'] ?? '',
-        'state' => $_POST['state'] ?? '',
-        'postcode' => $_POST['postcode'] ?? '',
-        'country' => $_POST['country'] ?? 'NG',
-        'gender' => $_POST['gender'] ?? '',
-        'hear_about' => $_POST['hear_about'] ?? '',
-        'order_id' => $_POST['orderid'] ?? '',
-        'payment_status' => 'pending',
-        'ip_address' => $_POST['REMOTE_ADDR'] ?? ''
-    );
-
-    $result = $wpdb->insert($table_name, $data);
-    if ($result !== false) {
-        wp_send_json_success(array(
-            'id' => $wpdb->insert_id,
-            'message' => 'Registration saved'
-        ));
-    } else {
-        wp_send_json_error('Database save failed');
-    }
-    return true;
-}
-
-add_action('wp_ajax_save_nsa_registration_on_payment_success', 'save_nsa_registration_on_payment_success');
-add_action('wp_ajax_nopriv_save_nsa_registration_on_payment_success', 'save_nsa_registration_on_payment_success');
-
-
-function handle_registration_submit()
-{
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['member_id'])) {
-
-        $data = array(
-            'member_id' => sanitize_text_field($_POST['member_id']),
-            'registering_for' => sanitize_text_field($_POST['registering_for']),
-            'title' => sanitize_text_field($_POST['title']),
-            'first_name' => sanitize_text_field($_POST['first_name']),
-            'last_name' => sanitize_text_field($_POST['last_name']),
-            'email' => sanitize_email($_POST['email']),
-            'phone' => sanitize_text_field($_POST['phone']),
-            'occupation' => sanitize_text_field($_POST['occupation']),
-            'organisation' => sanitize_text_field($_POST['organisation']),
-            'street' => sanitize_text_field($_POST['street']),
-            'city' => sanitize_text_field($_POST['city']),
-            'state' => sanitize_text_field($_POST['state']),
-            'postcode' => sanitize_text_field($_POST['postcode']),
-            'country' => sanitize_text_field($_POST['country']),
-            'gender' => sanitize_text_field($_POST['gender']),
-            'hear_about' => sanitize_text_field($_POST['hear_about'])
-        );
-
-        $order_data = array(
-            'Member ID' => $data['member_id'],
-            'Full Name' => $data['title'] . ' ' . $data['first_name'] . ' ' . $data['last_name'],
-            'Email' => $data['email'],
-            'Phone' => $data['phone']
-        );
-
-        $latest_order = wc_get_orders(array('limit' => 1, 'status' => 'wc-completed', 'orderby' => 'date', 'order' => 'DESC'));
-        if (!empty($latest_order)) {
-            $order = $latest_order[0];
-            $order->add_order_note('Registration: ' . json_encode($order_data));
-        }
-
-        wp_redirect(add_query_arg('registered', 'success', wp_get_referer()));
-        exit;
-    }
-}
-add_action('wp_ajax_clear_cart', 'ajax_clear_cart');
-add_action('wp_ajax_nopriv_clear_cart', 'ajax_clear_cart');
-
-add_action('init', 'handle_registration_submit');
-?>
