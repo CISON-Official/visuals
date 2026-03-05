@@ -346,20 +346,28 @@ function add_registration_script()
         
         
         // Form submit → Open checkout modal
-        $('#registration-form').on('submit', function(e) {
-            e.preventDefault();
-            
-            if ($('#pay-submit').prop('disabled')) {
-                alert('Please select registration option and add to cart first');
-                return;
-            }
-            $.post(ajax_object.ajax_url,{
-                action: 'save_nsa_registration_on_payment_success',
-                nonce: ajax_object.nonce
-            }, (response) => {
-                console.log('Database: ', response)
+        let valid = true;
+            $(this).find('[required]').each(function() {
+                if (!$(this).val().trim()) {
+                    $(this).addClass('is-invalid');
+                    valid = false;
+                } else {
+                    $(this).removeClass('is-invalid');
+                }
             });
             
+            if (!valid || $('#pay-submit').prop('disabled')) {
+                alert('Please complete all required fields and select registration.');
+                return;
+            }
+            $.post(ajax_object.ajax_url, $(this).serialize() + '&action=save_nsa_registration_on_payment_success', function(response) {
+                if (response.success) {
+                    // Redirect to checkout with registration ID
+                    console.log('Data saved: ', response);
+                } else {
+                    alert('Save error: ' + response.data);
+                }
+            });
             // Load checkout
             $.post(ajax_object.ajax_url, {
                 action: 'load_wc_checkout',
@@ -416,7 +424,7 @@ function ajax_clear_cart()
     // wp_send_json_success('Cart cleared');
 }
 
-function ajax_save_nsa_registration_on_payment_success($order_id)
+function save_nsa_registration_on_payment_success($order_id)
 {
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
@@ -443,24 +451,20 @@ function ajax_save_nsa_registration_on_payment_success($order_id)
         'ip_address' => $_POST['REMOTE_ADDR'] ?? ''
     );
 
-    $wpdb->insert($table_name, $data);
-
-    // WC()->session->__unset('nsa_registration_data');
-
-    // $admin_email = get_option('admin_email');
-    // $subject = '✅ NSA Registration Complete - Order #' . $order_id;
-    // $message = "Payment successful!\n\n";
-    // $message .= "Member ID: " . $data['member_id'] . "\n";
-    // $message .= "Name: " . $data['title'] . ' ' . $data['first_name'] . ' ' . $data['last_name'] . "\n";
-    // $message .= "Email: " . $data['email'] . "\n";
-    // $message .= "Order: " . $order_id . "\n";
-
-    // wp_mail($admin_email, $subject, $message);
+    $result = $wpdb->insert($table_name, $data);
+    if ($result !== false) {
+        wp_send_json_success(array(
+            'id' => $wpdb->insert_id,
+            'message' => 'Registration saved'
+        ));
+    } else {
+        wp_send_json_error('Database save failed');
+    }
     return true;
 }
 
-add_action('wp_ajax_ajax_save_nsa_registration_on_payment_success', 'ajax_save_nsa_registration_on_payment_success');
-add_action('wp_ajax_nopriv_ajax_save_nsa_registration_on_payment_success', 'ajax_save_nsa_registration_on_payment_success');
+add_action('wp_ajax_save_nsa_registration_on_payment_success', 'save_nsa_registration_on_payment_success');
+add_action('wp_ajax_nopriv_save_nsa_registration_on_payment_success', 'save_nsa_registration_on_payment_success');
 
 
 function handle_registration_submit()
