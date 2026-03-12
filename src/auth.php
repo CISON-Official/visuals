@@ -14,6 +14,7 @@ function cison_custom_guest_access_control()
         '/register/',
         '/activate/',
         '/login/',
+        '/member-registration/',
         '/event/',
         '/news/',
         '/groups/',
