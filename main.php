@@ -54,3 +54,8 @@ require_once VISUALS_PATH . 'src/forms/conference.php';
 
 // Authentication
 require_once VISUALS_PATH . 'src/auth.php';
+
+// Menu
+require_once VISUALS_PATH . 'src/menu.php';
+
+
