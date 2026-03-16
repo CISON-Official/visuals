@@ -73,15 +73,15 @@ function cison_custom_guest_access_control()
     }
 }
 
-add_action('template_redirect', function() {
-    // Check if we are viewing a BuddyBoss user profile page
-    if ( function_exists('bp_is_user') && bp_is_user() ) {
+// add_action('template_redirect', function() {
+//     // Check if we are viewing a BuddyBoss user profile page
+//     if ( function_exists('bp_is_user') && bp_is_user() ) {
         
-        // Optional: Only clear if it's the user's OWN profile
-        if ( bp_is_my_profile() ) {
-            if (isset(WC()->cart)) {
-                WC()->cart->empty_cart();
-            }
-        }
-    }
-});
+//         // Optional: Only clear if it's the user's OWN profile
+//         if ( bp_is_my_profile() ) {
+//             if (isset(WC()->cart)) {
+//                 WC()->cart->empty_cart();
+//             }
+//         }
+//     }
+// });
