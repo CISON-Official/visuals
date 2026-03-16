@@ -16,6 +16,6 @@ function filter_menu_by_permission($items, $args)
     //     $items .= '<li class="menu-item"><a href="/editor-panel/">Review Manuscripts</a></li>';
     // }
     // }
-    return $toadd . $items;
+    return $items . $toadd;
 }
 ?>

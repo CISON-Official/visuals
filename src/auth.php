@@ -72,3 +72,21 @@ function cison_custom_guest_access_control()
         ));
     }
 }
+
+add_action('template_redirect', 'cison_clear_cart_on_profile_view');
+
+function cison_clear_cart_on_profile_view() {
+    // 1. Get the current URI path
+    $current_path = $_SERVER['REQUEST_URI'];
+
+    // 2. Use BuddyBoss logic + Path check for maximum accuracy
+    // This ensures we are in the members area and WooCommerce is ready
+    if (strpos($current_path, '/cison-members/') !== false && function_exists('WC')) {
+        
+        // 3. Extra Safety: Don't clear if we are currently processing a cart action
+        // (This prevents the cart from clearing itself the moment you add a product)
+        if (isset(WC()->cart) && empty($_REQUEST['add-to-cart'])) {
+            WC()->cart->empty_cart();
+        }
+    }
+}
