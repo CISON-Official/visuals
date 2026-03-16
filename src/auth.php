@@ -57,7 +57,7 @@ function cison_custom_guest_access_control()
         }
     }
 
-    if (strpos($current_uri, 'cison-members') !== false) {
+    if (strpos($current_uri, 'cison-members/me/profile/') !== false) {
         if (isset(WC()->cart)) {
             WC()->cart->empty_cart();
         }
