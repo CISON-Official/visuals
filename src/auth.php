@@ -57,11 +57,11 @@ function cison_custom_guest_access_control()
         }
     }
 
-    if (strpos($current_uri, 'cison-members/me/profile/') !== false) {
-        if (isset(WC()->cart)) {
-            WC()->cart->empty_cart();
-        }
-    }
+    // if (strpos($current_uri, 'cison-members/me/profile/') !== false) {
+    //     if (isset(WC()->cart)) {
+    //         WC()->cart->empty_cart();
+    //     }
+    // }
 
 
     if (!$is_allowed && !is_page('login') && !strpos($current_uri, 'wp-login.php')) {
@@ -77,7 +77,7 @@ add_action('template_redirect', function() {
     // Check if we are viewing a BuddyBoss user profile page
     if ( function_exists('bp_is_user') && bp_is_user() ) {
         
-        // Optional: Only clear if it's the user's OWN profile
+        Optional: Only clear if it's the user's OWN profile
         if ( bp_is_my_profile() ) {
             if (isset(WC()->cart)) {
                 WC()->cart->empty_cart();
