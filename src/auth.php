@@ -4,6 +4,7 @@ add_action('bp_template_redirect', 'cison_custom_guest_access_control', 1);
 
 function cison_custom_guest_access_control()
 {
+
     if (is_user_logged_in()) {
         return;
     }
@@ -55,6 +56,13 @@ function cison_custom_guest_access_control()
             break;
         }
     }
+
+    if (strpos($current_uri, 'cison-members') !== false) {
+        if (isset(WC()->cart)) {
+            WC()->cart->empty_cart();
+        }
+    }
+
 
     if (!$is_allowed && !is_page('login') && !strpos($current_uri, 'wp-login.php')) {
         bp_core_no_access(array(
