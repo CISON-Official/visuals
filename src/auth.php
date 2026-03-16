@@ -73,7 +73,7 @@ function cison_custom_guest_access_control()
     }
 }
 
-add_action('template_redirect',, function() {
+add_action('template_redirect', function() {
     // Check if we are viewing a BuddyBoss user profile page
     if ( function_exists('bp_is_user') && bp_is_user() ) {
         
