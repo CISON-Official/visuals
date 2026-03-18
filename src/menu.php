@@ -8,7 +8,7 @@ function filter_menu_by_permission($items, $args)
     $toadd = '';
 
     if (current_user_can('manage_options')) {
-        $toadd .= '<li class="menu-item"><a href="https://my.cison.org.ng/members/wp-admin/admin.php">Backend</a></li>';
+        $toadd .= '<li class="menu-item"><a href="https://my.cison.org.ng/members/wp-admin/">Backend</a></li>';
     }
 
     // $user = wp_get_current_user();
