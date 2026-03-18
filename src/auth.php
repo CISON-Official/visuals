@@ -73,15 +73,35 @@ function cison_custom_guest_access_control()
     }
 }
 
-// add_action('template_redirect', function() {
-//     // Check if we are viewing a BuddyBoss user profile page
-//     if ( function_exists('bp_is_user') && bp_is_user() ) {
-        
-//         // Optional: Only clear if it's the user's OWN profile
-//         if ( bp_is_my_profile() ) {
-//             if (isset(WC()->cart)) {
-//                 WC()->cart->empty_cart();
-//             }
-//         }
-//     }
-// });
+add_action('template_redirect', 'cison_maybe_clear_profile_cart');
+
+function cison_maybe_clear_profile_cart()
+{
+    if (!is_user_logged_in()) {
+        return;
+    }
+
+    if (!function_exists('bp_is_user') || !bp_is_user() || !bp_is_my_profile()) {
+        return;
+    }
+
+    if (!function_exists('WC') || !WC()) {
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    $transient_key = 'cison_cart_cleared_' . $user_id;
+
+    if (get_transient($transient_key)) {
+        return;
+    }
+
+    if (!WC()->cart) {
+        WC()->initialize_cart();
+    }
+
+    if (WC()->cart) {
+        WC()->cart->empty_cart();
+        set_transient($transient_key, current_time('timestamp'), DAY_IN_SECONDS);
+    }
+}
