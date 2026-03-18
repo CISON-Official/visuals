@@ -36,6 +36,7 @@ add_action('admin_init', 'visuals_init_database');
 
 // 3. Core Database Logic
 require_once VISUALS_PATH . 'src/db/conference.php';
+require_once VISUALS_PATH . 'src/db/examination.php';
 
 // 4. PRS (Professional Registration System) Modules
 require_once VISUALS_PATH . 'src/PRS/corporate.php';
@@ -51,11 +52,11 @@ require_once VISUALS_PATH . 'src/profile/conference.php';
 
 // 6. User Forms
 require_once VISUALS_PATH . 'src/forms/conference.php';
+require_once VISUALS_PATH . 'src/forms/mock-examination.php';
 
 // Authentication
 require_once VISUALS_PATH . 'src/auth.php';
 
 // Menu
 require_once VISUALS_PATH . 'src/menu.php';
-
 
