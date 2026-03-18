@@ -406,9 +406,9 @@ function add_registration_script()
     $script = "
     jQuery(document).ready(function($) {
 
-        var conference_id        = 6623;
-        var workshop_id          = 6647;
-        var virtual_id           = 6625;
+        var conference_id        = 12817;
+        var workshop_id          = 12816;
+        var virtual_id           =  12818;
         var workshop_conference_id = 12670;
         var workshop_virtual_id  = 12672;
 
