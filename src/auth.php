@@ -10,6 +10,7 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
+        '/examination-submissions/',
         '/checkout/',
         '/checkout/order-received/',
         '/register/',

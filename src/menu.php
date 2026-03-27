@@ -7,7 +7,9 @@ function filter_menu_by_permission($items, $args)
     // if ($args->theme_location == 'primary') {
     $toadd = '';
 
-    if (current_user_can('manage_options')) {
+    $user = wp_get_current_user();
+    $allowed_roles = array('editor', 'administrator', 'author');
+    if (array_intersect($allowed_roles, $user->roles)) {
         $toadd .= '<li class="menu-item"><a href="https://my.cison.org.ng/members/wp-admin/">Backend</a></li>';
     }
 
