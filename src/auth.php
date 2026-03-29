@@ -45,6 +45,7 @@ function cison_custom_guest_access_control()
         '/12724-2/',
         '/product/conference-fee-virtual/',
         '/product/annual-conference-on-site-and-pre-conference-workshop/',
+        '/corporate-registration-2/',
 
     );
 
