@@ -60,3 +60,5 @@ require_once VISUALS_PATH . 'src/auth.php';
 // Menu
 require_once VISUALS_PATH . 'src/menu.php';
 
+// Corporate Pages
+require_once VISUALS_PATH . 'src/corporate/signuppage.php';
