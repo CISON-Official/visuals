@@ -6,14 +6,14 @@ function signup_page_shortcode()
     ?>
     <style>
         :root {
-            --bg: #ffffff;
+            --bg: #93e990;
             --panel: #7cfa5d;
             --accent: #0d5204;
             --text: #ffffffdd;
         }
 
         * {
-            /* box-sizing: border-box; */
+            box-sizing: border-box;
             margin: 0;
         }
 
