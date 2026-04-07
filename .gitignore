@@ -52,6 +52,7 @@ wp-config.php
 /.htaccess
 
 # Custom files and folders
+src/tests.php
 wc-product-export-18-3-2026-1773798521964.csv
 wc-product-import-18-3-2026-3rd-annual-conference.csv
 csv/*
