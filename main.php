@@ -62,3 +62,4 @@ require_once VISUALS_PATH . 'src/menu.php';
 
 // Corporate Pages
 require_once VISUALS_PATH . 'src/corporate/signuppage.php';
+require_once VISUALS_PATH . 'src/corporate/nav.php';
