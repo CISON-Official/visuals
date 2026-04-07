@@ -7,10 +7,6 @@
 add_action('bp_user_query_uid_clauses', function ($sql_clauses, $bp_user_query) {
     global $wpdb;
 
-    if (!bp_is_members_directory()) {
-        return $sql_clauses;
-    }
-
     $corporate_ids = $wpdb->get_col($wpdb->prepare("
         SELECT user_id
         FROM {$wpdb->prefix}bp_xprofile_data
