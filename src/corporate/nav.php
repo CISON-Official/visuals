@@ -66,20 +66,7 @@ add_filter('bp_nouveau_get_nav_items_member', function ($tabs) {
         );
         error_log('bp_nouveau_get_nav_items_member --> Added Members tab for corporate user: ' . $user_id);
 
-    } else {
-
-        // -------------------------------------------------------
-        // Individual - remove transactions
-        // -------------------------------------------------------
-        $remove = array('transactions');
-
-        foreach ($remove as $tab) {
-            if (isset($tabs[$tab])) {
-                unset($tabs[$tab]);
-                error_log('bp_nouveau_get_nav_items_member --> Removed tab: ' . $tab . ' for individual user: ' . $user_id);
-            }
-        }
-    }
+    } 
 
     return $tabs;
 });
