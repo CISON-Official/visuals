@@ -601,7 +601,7 @@ function nsa_registration_form_shortcode() {
             padding: 20px;
             background: linear-gradient(135deg, #c2ebc0 0%, #52a24b 100%);
             border-radius: 12px;
-            color: white;
+            color: black;
         }
         
         .nsa-step {
@@ -913,7 +913,7 @@ function nsa_registration_form_shortcode() {
             background: #e8f0fe;
             border-radius: 6px;
             font-size: 0.875rem;
-            color: #228a1e;
+            color: #1e3a8a;
         }
         
         /* Modal */
@@ -958,7 +958,7 @@ function nsa_registration_form_shortcode() {
             padding: 20px;
             border-bottom: 1px solid #e0e0e0;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            color: black;
         }
         
         .nsa-modal-header h3 {
