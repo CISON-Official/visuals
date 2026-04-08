@@ -17,7 +17,7 @@ add_action('wp_enqueue_scripts', 'enqueue_registration_scripts');
 
 
 // ============================================================
-// 2. ADD TO CART (unchanged)
+// 2. ADD TO CART
 // ============================================================
 function ajax_add_to_cart_handler()
 {
@@ -70,7 +70,7 @@ add_action('wp_ajax_nopriv_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
 
 
 // ============================================================
-// 3. LOAD CHECKOUT (unchanged)
+// 3. LOAD CHECKOUT
 // ============================================================
 function ajax_load_wc_checkout()
 {
@@ -114,11 +114,10 @@ add_action('wp_ajax_nopriv_clear_cart', 'ajax_clear_cart');
 
 
 // ============================================================
-// 5. ✅ SAVE REGISTRATION — the fixed/new handler
+// 5. SAVE REGISTRATION
 // ============================================================
 function ajax_save_registration()
 {
-    // Verify nonce (security)
     if (!wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
         wp_send_json_error('Security check failed');
         wp_die();
@@ -127,29 +126,29 @@ function ajax_save_registration()
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
 
-    // Sanitize every field before touching the DB
+    // registering_for arrives as a comma-joined string from JS
     $data = array(
-        'member_id' => sanitize_text_field($_POST['member_id'] ?? ''),
+        'member_id'       => sanitize_text_field($_POST['member_id'] ?? ''),
         'registering_for' => sanitize_text_field($_POST['registering_for'] ?? ''),
-        'title' => sanitize_text_field($_POST['title'] ?? ''),
-        'first_name' => sanitize_text_field($_POST['first_name'] ?? ''),
-        'last_name' => sanitize_text_field($_POST['last_name'] ?? ''),
-        'email' => sanitize_email($_POST['email'] ?? ''),
-        'phone' => sanitize_text_field($_POST['phone'] ?? ''),
-        'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
-        'organisation' => sanitize_text_field($_POST['organisation'] ?? ''),
-        'street' => sanitize_text_field($_POST['street'] ?? ''),
-        'city' => sanitize_text_field($_POST['city'] ?? ''),
-        'state' => sanitize_text_field($_POST['state'] ?? ''),
-        'postcode' => sanitize_text_field($_POST['postcode'] ?? ''),
-        'country' => sanitize_text_field($_POST['country'] ?? 'NG'),
-        'gender' => sanitize_text_field($_POST['gender'] ?? ''),
-        'hear_about' => sanitize_text_field($_POST['hear_about'] ?? ''),
-        'payment_status' => 'pending',
-        'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+        'title'           => sanitize_text_field($_POST['title'] ?? ''),
+        'first_name'      => sanitize_text_field($_POST['first_name'] ?? ''),
+        'middle_name'     => sanitize_text_field($_POST['middle_name'] ?? ''),
+        'last_name'       => sanitize_text_field($_POST['last_name'] ?? ''),
+        'email'           => sanitize_email($_POST['email'] ?? ''),
+        'phone'           => sanitize_text_field($_POST['phone'] ?? ''),
+        'occupation'      => sanitize_text_field($_POST['occupation'] ?? ''),
+        'organisation'    => sanitize_text_field($_POST['organisation'] ?? ''),
+        'street'          => sanitize_text_field($_POST['street'] ?? ''),
+        'city'            => sanitize_text_field($_POST['city'] ?? ''),
+        'state'           => sanitize_text_field($_POST['state'] ?? ''),
+        'postcode'        => sanitize_text_field($_POST['postcode'] ?? ''),
+        'country'         => sanitize_text_field($_POST['country'] ?? 'NG'),
+        'gender'          => sanitize_text_field($_POST['gender'] ?? ''),
+        'hear_about'      => sanitize_text_field($_POST['hear_about'] ?? ''),
+        'payment_status'  => 'pending',
+        'ip_address'      => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
     );
 
-    // Basic required-field validation on the server side
     $required = ['registering_for', 'title', 'first_name', 'last_name', 'email', 'phone', 'street', 'city', 'state', 'country', 'gender'];
     foreach ($required as $field) {
         if (empty($data[$field])) {
@@ -158,19 +157,17 @@ function ajax_save_registration()
         }
     }
 
-    // Validate email
     if (!is_email($data['email'])) {
         wp_send_json_error('Invalid email address');
         wp_die();
     }
 
-    // Insert into DB
     $result = $wpdb->insert($table_name, $data);
 
     if ($result !== false) {
         wp_send_json_success(array(
             'registration_id' => $wpdb->insert_id,
-            'message' => 'Registration saved successfully',
+            'message'         => 'Registration saved successfully',
         ));
     } else {
         wp_send_json_error('Database error: ' . $wpdb->last_error);
@@ -187,8 +184,7 @@ add_action('wp_ajax_nopriv_save_registration', 'ajax_save_registration');
 function link_registration_to_order($order_id)
 {
     $registration_id = WC()->session ? WC()->session->get('nsa_registration_id') : 0;
-    if (!$registration_id)
-        return;
+    if (!$registration_id) return;
 
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
@@ -207,7 +203,7 @@ add_action('woocommerce_payment_complete', 'link_registration_to_order');
 
 
 // ============================================================
-// 7. SHORTCODE — form HTML (updated JS only)
+// 7. SHORTCODE — form HTML
 // ============================================================
 function registration_form_with_checkout_shortcode()
 {
@@ -216,57 +212,35 @@ function registration_form_with_checkout_shortcode()
     <div class="registration-container">
         <form id="registration-form" method="post" novalidate>
 
-            <div class="mb-4">
-                <h5>Member ID <span class="text-danger">*</span> (Required)</h5>
-                <div class="row">
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" name="member_id" pattern="[0-9]{8}"
-                            title="Enter valid NSA Member ID (3-10 chars)">
-                        <small class="form-text text-muted">Your NSA Member ID (Leave empty if you are not a Member of
-                            CISON)</small>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mb-4">
-                <h5>Registering for <span class="text-danger">*</span> (Required)</h5>
-                <select class="form-select" name="registering_for" id="registering_for" required>
-                    <option value="">Choose registration option...</option>
-                    <option value="workshop">Pre-Conference Workshop only (Early Bird)</option>
-                    <option value="conference">3rd Annual Conference only (On-Site) (Early Bird)</option>
-                    <option value="virtual">3rd Annual Conference only (Virtual) (Early Bird)</option>
-                    <option value="both">3rd Annual Conference (On-Site) and Pre-Conference Workshop (Early Bird)</option>
-                    <option value="virtual_both">3rd Annual Conference (Virtual) and Pre-Conference Workshop (Early Bird)
-                    </option>
-                </select>
-            </div>
-
             <hr class="my-5">
-
-            <h4>Please let's get your Information</h4>
+            <h4>Please let us get your Information</h4>
             <div class="row mb-3">
                 <div class="col-md-4">
                     <label>Title <span class="text-danger">*</span></label>
                     <select class="form-select" name="title" required>
                         <option value="">Select</option>
-                        <option>Mr</option>
-                        <option>Mrs</option>
-                        <option>Ms</option>
-                        <option>Dr</option>
-                        <option>Prof</option>
-                        <option>Engr</option>
-                        <option>Rev</option>
-                        <option>Hon</option>
+                        <option>Mr.</option>
+                        <option>Mrs.</option>
+                        <option>Ms.</option>
+                        <option>Dr.</option>
+                        <option>Prof.</option>
+                        <option>Engr.</option>
+                        <option>Rev.</option>
+                        <option>Hon.</option>
                     </select>
                 </div>
             </div>
 
             <div class="row mb-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label>First Name <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="first_name" required>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
+                    <label>Middle Name</label>
+                    <input type="text" class="form-control" name="middle_name">
+                </div>
+                <div class="col-md-4">
                     <label>Last Name <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="last_name" required>
                 </div>
@@ -304,14 +278,10 @@ function registration_form_with_checkout_shortcode()
             <div class="mb-4">
                 <h6>Address <span class="text-danger">*</span></h6>
                 <div class="row">
-                    <div class="col-md-12 mb-2"><input type="text" class="form-control" name="street"
-                            placeholder="Street Address" required></div>
-                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="city" placeholder="City/Town"
-                            required></div>
-                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="state" placeholder="State"
-                            required></div>
-                    <div class="col-md-2 mb-2"><input type="text" class="form-control" name="postcode"
-                            placeholder="Postcode" required></div>
+                    <div class="col-md-12 mb-2"><input type="text" class="form-control" name="street" placeholder="Street Address" required></div>
+                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="city" placeholder="City/Town" required></div>
+                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="state" placeholder="State" required></div>
+                    <div class="col-md-2 mb-2"><input type="text" class="form-control" name="postcode" placeholder="Postcode"></div>
                     <div class="col-md-2 mb-2">
                         <select class="form-select" name="country" required>
                             <option value="">Country</option>
@@ -335,6 +305,67 @@ function registration_form_with_checkout_shortcode()
                         <option>Prefer Not to Answer</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="mb-4">
+                <h5>Are you a CISON member? <span class="text-danger">*</span></h5>
+                <div>
+                    <label>
+                        <input type="radio" name="is_cison_member" value="yes" onclick="toggleCisonId(true)"> Yes
+                    </label>
+                    <label class="ms-3">
+                        <input type="radio" name="is_cison_member" value="no" onclick="toggleCisonId(false)"> No
+                    </label>
+                </div>
+            </div>
+
+            <div class="mb-4" id="cisonIdField" style="display:none;">
+                <h5>CISON ID <span class="text-danger">*</span></h5>
+                <div class="row">
+                    <div class="col-md-8">
+                        <input type="text" class="form-control" name="member_id" pattern="[0-9]{8}" title="Enter valid CISON ID (8 digits)">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <h5>Registering for <span class="text-danger">*</span></h5>
+                <p class="text-muted small mb-2">
+                    You may select the Pre-Conference Workshop together with <em>one</em> conference option,
+                    or a single conference option on its own. You cannot select both On-Site and Virtual at the same time.
+                </p>
+
+                <!-- Pre-conference workshop -->
+                <div class="form-check">
+                    <input class="" type="checkbox"
+                           name="registering_for[]" value="workshop"
+                           id="chk_workshop" onchange="handleRegistrationChange()">
+                    <label class="form-check-label" for="chk_workshop">
+                        Pre-Conference Workshop only
+                    </label>
+                </div>
+
+                <!-- On-site conference -->
+                <div class="form-check">
+                    <input class="" type="checkbox"
+                           name="registering_for[]" value="conference"
+                           id="chk_conference" onchange="handleRegistrationChange()">
+                    <label class="form-check-label" for="chk_conference">
+                        3rd Annual Conference only (On-Site) (Early Bird)
+                    </label>
+                </div>
+
+                <!-- Virtual conference -->
+                <div class="form-check">
+                    <input class="" type="checkbox"
+                           name="registering_for[]" value="virtual"
+                           id="chk_virtual" onchange="handleRegistrationChange()">
+                    <label class="form-check-label" for="chk_virtual">
+                        3rd Annual Conference only (Virtual) (Early Bird)
+                    </label>
+                </div>
+
+                <div id="registration-error" class="text-danger small mt-1" style="display:none;"></div>
             </div>
 
             <div class="mb-4">
@@ -373,25 +404,66 @@ function registration_form_with_checkout_shortcode()
     </div>
 
     <style>
-        .registration-container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .text-danger {
-            color: #dc3545 !important;
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        #checkout-container .woocommerce {
-            padding: 20px;
-        }
+        .registration-container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        .text-danger { color: #dc3545 !important; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        #checkout-container .woocommerce { padding: 20px; }
     </style>
+
+    <script>
+        function toggleCisonId(show) {
+            var field = document.getElementById('cisonIdField');
+            var input = field.querySelector('input');
+            field.style.display = show ? 'block' : 'none';
+            input.required = show;
+        }
+
+        // ── Enforce mutually exclusive conference options ──────────────────────
+        // Rules:
+        //   - "conference" (on-site) and "virtual" cannot both be checked
+        //   - "workshop" can accompany EITHER conference option, but not stand
+        //     in the way of either — it is always freely toggleable
+        function handleRegistrationChange() {
+            var chkConference = document.getElementById('chk_conference');
+            var chkVirtual    = document.getElementById('chk_virtual');
+            var errDiv        = document.getElementById('registration-error');
+
+            // If the user just checked on-site, uncheck virtual (and vice-versa)
+            if (chkConference.checked && chkVirtual.checked) {
+                // Whichever was most recently checked wins; we detect by which
+                // event fired — but since we can't know that easily, we just
+                // uncheck virtual when conference is checked and vice-versa.
+                // The event always comes from the box that was just toggled ON.
+                // We store the "last changed" id via a data attribute.
+                var last = document.getElementById('chk_conference').dataset.last === 'true'
+                    ? 'conference' : 'virtual';
+
+                if (last === 'conference') {
+                    chkVirtual.checked = false;
+                } else {
+                    chkConference.checked = false;
+                }
+            }
+
+            errDiv.style.display = 'none';
+            errDiv.textContent   = '';
+
+            // Trigger cart update
+            updateCartFromCheckboxes();
+        }
+
+        // Track which conference checkbox was most recently clicked
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('chk_conference').addEventListener('change', function() {
+                this.dataset.last = this.checked ? 'true' : 'false';
+                document.getElementById('chk_virtual').dataset.last = 'false';
+            });
+            document.getElementById('chk_virtual').addEventListener('change', function() {
+                this.dataset.last = this.checked ? 'true' : 'false';
+                document.getElementById('chk_conference').dataset.last = 'false';
+            });
+        });
+    </script>
     <?php
     return ob_get_clean();
 }
@@ -399,66 +471,75 @@ add_shortcode('registration_wc_checkout', 'registration_form_with_checkout_short
 
 
 // ============================================================
-// 8. INLINE JS — updated to call save_registration first
+// 8. INLINE JS — cart logic + form submit
 // ============================================================
 function add_registration_script()
 {
-    $script = "
+    $script = <<<'JS'
     jQuery(document).ready(function($) {
 
-        var conference_id        = 12817;
-        var workshop_id          = 12816;
-        var virtual_id           =  12818;
-        var workshop_conference_id = 12670;
-        var workshop_virtual_id  = 12672;
+        // ── Product IDs ──────────────────────────────────────────────────────
+        var PRODUCTS = {
+            workshop            : 12816,   // workshop only
+            conference          : 12817,   // on-site only
+            virtual             : 12818,   // virtual only
+            workshop_conference : 12670,   // workshop + on-site
+            workshop_virtual    : 12672    // workshop + virtual
+        };
 
-        // ── Auto-add to cart on selection change ──────────────
-        $('#registering_for').on('change', function() {
+        // ── Resolve which product to add based on checked boxes ──────────────
+        function resolveProduct() {
+            var workshop   = $('#chk_workshop').is(':checked');
+            var conference = $('#chk_conference').is(':checked');
+            var virtual_   = $('#chk_virtual').is(':checked');
+
+            if (workshop && conference)  return PRODUCTS.workshop_conference;
+            if (workshop && virtual_)    return PRODUCTS.workshop_virtual;
+            if (workshop)                return PRODUCTS.workshop;
+            if (conference)              return PRODUCTS.conference;
+            if (virtual_)                return PRODUCTS.virtual;
+            return null;
+        }
+
+        // ── Expose to inline HTML onchange ───────────────────────────────────
+        window.updateCartFromCheckboxes = function() {
+            var productId = resolveProduct();
+
+            // Always clear first
             $.post(ajax_object.ajax_url, { action: 'clear_cart', nonce: ajax_object.nonce });
 
-            var selection = $(this).val();
-            $('.cart-status').text('Adding to cart...');
+            if (!productId) {
+                $('.cart-status').text('');
+                $('#pay-submit').prop('disabled', true);
+                return;
+            }
+
+            $('.cart-status').text('Updating cart…');
             $('#pay-submit').prop('disabled', true);
 
-            var productMap = {
-                conference:   conference_id,
-                workshop:     workshop_id,
-                both:         workshop_conference_id,
-                virtual:      virtual_id,
-                virtual_both: workshop_virtual_id
-            };
-
-            if (productMap[selection]) {
-                addToCart(productMap[selection]);
-            } else {
-                $('.cart-status').text('Please select a registration option');
-            }
-        });
-
-        function addToCart(product_id) {
             $.post(ajax_object.ajax_url, {
-                action:     'add_to_cart_dynamic',
-                product_id: product_id,
-                nonce:      ajax_object.nonce
+                action     : 'add_to_cart_dynamic',
+                product_id : productId,
+                nonce      : ajax_object.nonce
             }, function(response) {
                 if (response.success) {
-                    $('.cart-status').html('✅ Item added! Ready to pay');
+                    $('.cart-status').html('✅ Item added! Ready to pay.');
                     $('#pay-submit').prop('disabled', false);
                 } else {
                     $('.cart-status').html('❌ Error: ' + (response.data || 'Try again'));
                     $('#pay-submit').prop('disabled', true);
                 }
             }).fail(function() {
-                $('.cart-status').html('❌ Network error - try again');
+                $('.cart-status').html('❌ Network error — try again');
                 $('#pay-submit').prop('disabled', true);
             });
-        }
+        };
 
-        // ── Form submit ───────────────────────────────────────
+        // ── Form submit ──────────────────────────────────────────────────────
         $('#registration-form').on('submit', function(e) {
             e.preventDefault();
 
-            // 1. Client-side validation
+            // 1. Required-field validation
             var valid = true;
             $(this).find('[required]').each(function() {
                 if (!$(this).val().trim()) {
@@ -469,11 +550,14 @@ function add_registration_script()
                 }
             });
 
-            if ($('#registering_for').val() === '') {
-                alert('Please select a registration option first.');
+            // 2. At least one registration option must be checked
+            var productId = resolveProduct();
+            if (!productId) {
+                $('#registration-error').text('Please select at least one registration option.').show();
                 return;
             }
 
+            // 3. Email match
             var email        = $('[name=email]').val().trim();
             var confirmEmail = $('[name=confirm_email]').val().trim();
             if (email !== confirmEmail) {
@@ -487,19 +571,34 @@ function add_registration_script()
                 return;
             }
 
-            // 2. ✅ SAVE REGISTRATION TO DB FIRST
-            var formData = $(this).serialize() + '&action=save_registration&nonce=' + ajax_object.nonce;
+            // 4. Build registering_for as a comma-joined string for the DB
+            var selections = [];
+            $('[name="registering_for[]"]:checked').each(function() {
+                selections.push($(this).val());
+            });
+            var registeringForStr = selections.join(', ');
 
-            $('#pay-submit').prop('disabled', true).text('Saving...');
+            // 5. Serialize form but override registering_for with our string
+            //    (jQuery serialize sends multiple values for checkboxes which
+            //    the PHP handler treats as a single sanitize_text_field call)
+            var formData = $(this).serializeArray().filter(function(item) {
+                return item.name !== 'registering_for[]';
+            });
+            formData.push({ name: 'registering_for', value: registeringForStr });
+            formData.push({ name: 'action', value: 'save_registration' });
+            formData.push({ name: 'nonce',  value: ajax_object.nonce });
 
-            $.post(ajax_object.ajax_url, formData, function(response) {
+            $('#pay-submit').prop('disabled', true).text('Saving…');
+
+            // 6. Save registration to DB first
+            $.post(ajax_object.ajax_url, $.param(formData), function(response) {
                 if (response.success) {
                     console.log('Registration saved. ID:', response.data.registration_id);
 
-                    // 3. Then load the WooCommerce checkout modal
+                    // 7. Load WooCommerce checkout modal
                     $.post(ajax_object.ajax_url, {
-                        action: 'load_wc_checkout',
-                        nonce:  ajax_object.nonce
+                        action : 'load_wc_checkout',
+                        nonce  : ajax_object.nonce
                     }, function(checkoutResponse) {
                         if (checkoutResponse.success) {
                             $('#checkout-container').html(checkoutResponse.data.html);
@@ -522,7 +621,7 @@ function add_registration_script()
             });
         });
 
-        // ── Detect payment success ────────────────────────────
+        // ── Detect payment success ───────────────────────────────────────────
         $('#checkoutModal').on('hidden.bs.modal', function() {
             if (window.paymentCompleted) { location.reload(); }
         });
@@ -531,7 +630,7 @@ function add_registration_script()
             window.paymentCompleted = true;
         });
     });
-    ";
+JS;
     wp_add_inline_script('bootstrap-js', $script);
 }
 add_action('wp_enqueue_scripts', 'add_registration_script');
