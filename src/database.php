@@ -86,6 +86,34 @@ function create_examination_registration_table()
     dbDelta($sql);
 }
 
+function alter_nsa_registration_table()
+{
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'nsa_registrations';
+    $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+
+    if ($table_exists !== $table_name) {
+        return;
+    }
+
+    $columns = $wpdb->get_col("DESC $table_name", 0);
+    $alter_clauses = array();
+
+    if (!in_array('middle_name', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN middle_name varchar(100) DEFAULT '' AFTER first_name";
+    }
+
+    if (!in_array('who_paid', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN who_paid varchar(50) DEFAULT 'self' AFTER payment_status";
+    }
+
+    if ($alter_clauses) {
+        $wpdb->query("ALTER TABLE $table_name " . implode(', ', $alter_clauses));
+    }
+}
+
+
 function alter_examination_registration_table()
 {
     global $wpdb;
@@ -148,6 +176,7 @@ function create_databases()
     global $wpdb;
 
     create_nsa_registration_table();
+    alter_nsa_registration_table();
     create_examination_registration_table();
     alter_examination_registration_table();
 }
