@@ -47,6 +47,7 @@ function cison_custom_guest_access_control()
         '/product/annual-conference-on-site-and-pre-conference-workshop/',
         '/corporate-registration-2/',
         '/signup/',
+        '/group-conference-registration/',
 
     );
 
