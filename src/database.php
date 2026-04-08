@@ -97,15 +97,27 @@ function alter_nsa_registration_table()
         return;
     }
 
-    $columns = $wpdb->get_col("DESC $table_name", 0);
+    $columns_data = $wpdb->get_results("DESC $table_name");
+    $columns = wp_list_pluck($columns_data, 'Field');
     $alter_clauses = array();
 
     if (!in_array('middle_name', $columns, true)) {
         $alter_clauses[] = "ADD COLUMN middle_name varchar(100) DEFAULT '' AFTER first_name";
     }
 
+    $who_paid_col = null;
+    foreach ($columns_data as $col) {
+        if ($col->Field === 'who_paid') {
+            $who_paid_col = $col;
+            break;
+        }
+    }
+
     if (!in_array('who_paid', $columns, true)) {
-        $alter_clauses[] = "ADD COLUMN who_paid varchar(50) DEFAULT 'self' AFTER payment_status";
+        $alter_clauses[] = "ADD COLUMN who_paid varchar(700) DEFAULT 'self' AFTER payment_status";
+    } elseif ($who_paid_col->Type !== 'varchar(2000)') {
+        // Column exists but size/type is different (e.g., varchar(50))
+        $alter_clauses[] = "MODIFY COLUMN who_paid varchar(2000) DEFAULT 'self'";
     }
 
     if ($alter_clauses) {
