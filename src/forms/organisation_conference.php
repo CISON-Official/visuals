@@ -1,410 +1,512 @@
 <?php
+/**
+ * Plugin Name: NSA Bulk Registration System
+ * Description: Complete bulk attendee registration with WooCommerce integration - Global Registration Options
+ * Version: 2.1
+ * Author: Your Name
+ */
 
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
 
 // ============================================================
-// 2. ADD TO CART  (now accepts quantity for bulk)
+// 1. ENQUEUE SCRIPTS AND STYLES
 // ============================================================
-function ajax_add_to_cart_handler_for_organization()
-{
-    if (is_user_logged_in() && !wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
-        wp_send_json_error('Invalid nonce');
-        wp_die();
+function nsa_enqueue_scripts() {
+    if (!is_page() && !has_shortcode(get_post()->post_content, 'nsa_registration_form')) {
+        return;
     }
 
-    $product_id = intval($_POST['product_id']);
+    // Enqueue Bootstrap (optional - you can use your own)
+    wp_enqueue_style('bootstrap-css', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css');
+    wp_enqueue_script('bootstrap-js', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js', array('jquery'), '5.3.0', true);
+    
+    // Localize script with AJAX URL and nonce
+    wp_localize_script('jquery', 'nsa_ajax', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('nsa_registration_nonce')
+    ));
+}
+add_action('wp_enqueue_scripts', 'nsa_enqueue_scripts');
+
+// ============================================================
+// 2. ADD TO CART HANDLER (with quantity support)
+// ============================================================
+function nsa_add_to_cart_handler() {
+    // Verify nonce
+    if (!check_ajax_referer('nsa_registration_nonce', 'nonce', false)) {
+        wp_send_json_error('Security verification failed');
+    }
+
+    $product_id = intval($_POST['product_id'] ?? 0);
     $quantity = max(1, intval($_POST['quantity'] ?? 1));
 
     if (!$product_id) {
-        wp_send_json_error('No product ID');
-        wp_die();
+        wp_send_json_error('No product ID provided');
     }
+
     if (!class_exists('WooCommerce') || !WC()) {
-        wp_send_json_error('WooCommerce unavailable');
-        wp_die();
+        wp_send_json_error('WooCommerce is not available');
     }
+
     if (!WC()->cart) {
         WC()->initialize_cart();
-    }
-    if (!WC()->cart) {
-        wp_send_json_error('Cart unavailable');
-        wp_die();
     }
 
     $product = wc_get_product($product_id);
     if (!$product || !$product->exists()) {
-        wp_send_json_error("Product $product_id not found");
-        wp_die();
+        wp_send_json_error('Product not found');
     }
 
+    // Empty cart before adding new items
     WC()->cart->empty_cart();
+    
+    // Add product to cart
     $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
 
     if ($cart_item_key) {
         WC()->cart->calculate_totals();
         wp_send_json_success(array(
-            'message' => 'Added to cart',
-            'cart_count' => WC()->cart->get_cart_contents_count()
+            'message' => 'Product added to cart successfully',
+            'cart_count' => WC()->cart->get_cart_contents_count(),
+            'cart_total' => WC()->cart->get_cart_total()
         ));
     } else {
-        wp_send_json_error('Failed to add product');
+        wp_send_json_error('Failed to add product to cart');
     }
-    wp_die();
 }
-add_action('wp_ajax_add_to_cart_dynamic', 'ajax_add_to_cart_handler_for_organization');
-add_action('wp_ajax_nopriv_add_to_cart_dynamic', 'ajax_add_to_cart_handler_for_organization');
-
+add_action('wp_ajax_nsa_add_to_cart', 'nsa_add_to_cart_handler');
+add_action('wp_ajax_nopriv_nsa_add_to_cart', 'nsa_add_to_cart_handler');
 
 // ============================================================
-// 3. LOAD CHECKOUT
+// 3. CLEAR CART HANDLER
 // ============================================================
-function ajax_load_wc_checkout_for_organization()
-{
-    check_ajax_referer('registration_nonce', 'nonce');
-
-    if (!WC()->cart->is_empty()) {
-        ob_start();
-        echo do_shortcode('[woocommerce_checkout]');
-        $html = ob_get_clean();
-        wp_send_json_success(array('html' => $html));
+function nsa_clear_cart_handler() {
+    check_ajax_referer('nsa_registration_nonce', 'nonce');
+    
+    if (!class_exists('WooCommerce') || !WC()) {
+        wp_send_json_error('WooCommerce not available');
+    }
+    
+    if (WC()->cart) {
+        WC()->cart->empty_cart();
+        wp_send_json_success('Cart cleared successfully');
     } else {
-        wp_send_json_error('Cart is empty. Please add at least one attendee.');
+        wp_send_json_error('Cart not available');
     }
-    wp_die();
 }
-add_action('wp_ajax_load_wc_checkout', 'ajax_load_wc_checkout_for_organization');
-add_action('wp_ajax_nopriv_load_wc_checkout', 'ajax_load_wc_checkout_for_organization');
-
-
-// ============================================================
-// 4. CLEAR CART
-// // ============================================================
-// function ajax_clear_cart()
-// {
-//     if (!function_exists('WC')) { wp_send_json_success('WC not loaded'); wp_die(); }
-//     if (!WC()->cart) { WC()->initialize_cart(); }
-//     if (WC()->cart && WC()->cart->get_cart_contents_count() > 0) {
-//         WC()->cart->empty_cart();
-//         do_action('woocommerce_cart_emptied');
-//     }
-//     wp_send_json_success('Cart cleared');
-//     wp_die();
-// }
-// add_action('wp_ajax_clear_cart',        'ajax_clear_cart');
-// add_action('wp_ajax_nopriv_clear_cart', 'ajax_clear_cart');
-
+add_action('wp_ajax_nsa_clear_cart', 'nsa_clear_cart_handler');
+add_action('wp_ajax_nopriv_nsa_clear_cart', 'nsa_clear_cart_handler');
 
 // ============================================================
-// 5. SAVE BULK REGISTRATIONS
-//    Receives JSON array of attendees + org billing details.
-//    Inserts one row per attendee.
-//    who_paid = "OrgName|orgemail"
+// 4. LOAD CHECKOUT IN MODAL
 // ============================================================
-function ajax_save_bulk_registrations()
-{
-    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
-        wp_send_json_error('Security check failed');
-        wp_die();
+function nsa_load_checkout_handler() {
+    check_ajax_referer('nsa_registration_nonce', 'nonce');
+    
+    if (!class_exists('WooCommerce') || !WC()) {
+        wp_send_json_error('WooCommerce not available');
+    }
+    
+    if (WC()->cart->is_empty()) {
+        wp_send_json_error('Cart is empty. Please add products first.');
+    }
+    
+    ob_start();
+    
+    // Load WooCommerce checkout template
+    if (function_exists('woocommerce_checkout')) {
+        woocommerce_checkout();
+    } else {
+        echo do_shortcode('[woocommerce_checkout]');
+    }
+    
+    $html = ob_get_clean();
+    
+    wp_send_json_success(array(
+        'html' => $html,
+        'cart_total' => WC()->cart->get_cart_total()
+    ));
+}
+add_action('wp_ajax_nsa_load_checkout', 'nsa_load_checkout_handler');
+add_action('wp_ajax_nopriv_nsa_load_checkout', 'nsa_load_checkout_handler');
+
+// ============================================================
+// 5. SAVE BULK REGISTRATIONS (with global options and no address)
+// ============================================================
+function nsa_save_bulk_registrations() {
+    // Verify nonce
+    if (!check_ajax_referer('nsa_registration_nonce', 'nonce', false)) {
+        wp_send_json_error('Security verification failed');
     }
 
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
 
-    // --- Billing / org details ---
+    // Validate organization details
     $org_name = sanitize_text_field($_POST['org_name'] ?? '');
     $org_email = sanitize_email($_POST['org_email'] ?? '');
     $org_phone = sanitize_text_field($_POST['org_phone'] ?? '');
 
-    if (empty($org_name) || empty($org_email)) {
-        wp_send_json_error('Organisation name and email are required.');
-        wp_die();
+    if (empty($org_name)) {
+        wp_send_json_error('Organization name is required');
     }
-    if (!is_email($org_email)) {
-        wp_send_json_error('Invalid organisation email address.');
-        wp_die();
+    
+    if (empty($org_email) || !is_email($org_email)) {
+        wp_send_json_error('Valid organization email is required');
     }
 
-    // who_paid format: "OrgName|orgemail"
+    // Get global registration options
+    $global_options = array(
+        'workshop' => isset($_POST['global_workshop']) ? sanitize_text_field($_POST['global_workshop']) : 'no',
+        'conference_type' => sanitize_text_field($_POST['global_conference_type'] ?? 'none')
+    );
+
+    // Build registering_for string based on global options
+    $registering_parts = array();
+    if ($global_options['workshop'] === 'yes') {
+        $registering_parts[] = 'workshop';
+    }
+    if ($global_options['conference_type'] === 'on-site') {
+        $registering_parts[] = 'conference';
+    } elseif ($global_options['conference_type'] === 'virtual') {
+        $registering_parts[] = 'virtual';
+    }
+    
+    $global_registering_for = implode(', ', $registering_parts);
+    
+    if (empty($global_registering_for)) {
+        wp_send_json_error('Please select at least one registration option (Workshop or Conference)');
+    }
+
+    // Get global "How did you hear about this event?"
+    $global_hear_about = sanitize_text_field($_POST['global_hear_about'] ?? '');
+
+    // Format who_paid as "OrgName|orgemail"
     $who_paid = $org_name . '|' . $org_email;
 
-    // --- Attendees JSON ---
+    // Get attendees data
     $attendees_raw = stripslashes($_POST['attendees'] ?? '[]');
     $attendees = json_decode($attendees_raw, true);
 
-    if (!is_array($attendees) || count($attendees) === 0) {
-        wp_send_json_error('No attendees provided.');
-        wp_die();
+    if (!is_array($attendees) || empty($attendees)) {
+        wp_send_json_error('No attendees data provided');
     }
 
-    $required_fields = ['registering_for', 'title', 'first_name', 'last_name', 'email', 'phone', 'street', 'city', 'state', 'country', 'gender'];
+    // Required fields for each attendee (address fields removed)
+    $required_fields = [
+        'title', 'first_name', 'last_name', 'email', 'phone', 'gender'
+    ];
+    
     $inserted_ids = [];
     $errors = [];
+    $ip_address = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '');
 
-    foreach ($attendees as $idx => $a) {
-        $num = $idx + 1;
-
+    foreach ($attendees as $index => $attendee) {
+        $attendee_num = $index + 1;
+        
+        // Sanitize all fields
         $data = array(
-            'member_id' => sanitize_text_field($a['member_id'] ?? ''),
-            'registering_for' => sanitize_text_field($a['registering_for'] ?? ''),
-            'title' => sanitize_text_field($a['title'] ?? ''),
-            'first_name' => sanitize_text_field($a['first_name'] ?? ''),
-            'middle_name' => sanitize_text_field($a['middle_name'] ?? ''),
-            'last_name' => sanitize_text_field($a['last_name'] ?? ''),
-            'email' => sanitize_email($a['email'] ?? ''),
-            'phone' => sanitize_text_field($a['phone'] ?? ''),
-            'occupation' => sanitize_text_field($a['occupation'] ?? ''),
+            'member_id' => sanitize_text_field($attendee['member_id'] ?? ''),
+            'registering_for' => $global_registering_for, // Use global registration options
+            'title' => sanitize_text_field($attendee['title'] ?? ''),
+            'first_name' => sanitize_text_field($attendee['first_name'] ?? ''),
+            'middle_name' => sanitize_text_field($attendee['middle_name'] ?? ''),
+            'last_name' => sanitize_text_field($attendee['last_name'] ?? ''),
+            'email' => sanitize_email($attendee['email'] ?? ''),
+            'phone' => sanitize_text_field($attendee['phone'] ?? ''),
+            'occupation' => sanitize_text_field($attendee['occupation'] ?? ''),
             'organisation' => $org_name,
-            'street' => sanitize_text_field($a['street'] ?? ''),
-            'city' => sanitize_text_field($a['city'] ?? ''),
-            'state' => sanitize_text_field($a['state'] ?? ''),
-            'postcode' => sanitize_text_field($a['postcode'] ?? ''),
-            'country' => sanitize_text_field($a['country'] ?? 'NG'),
-            'gender' => sanitize_text_field($a['gender'] ?? ''),
-            'hear_about' => sanitize_text_field($a['hear_about'] ?? ''),
+            'street' => '', // Empty string - address removed
+            'city' => '', // Empty string - address removed
+            'state' => '', // Empty string - address removed
+            'postcode' => '', // Empty string - address removed
+            'country' => 'NG', // Default country
+            'gender' => sanitize_text_field($attendee['gender'] ?? ''),
+            'hear_about' => $global_hear_about, // Use global value
             'payment_status' => 'pending',
             'who_paid' => $who_paid,
-            'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+            'ip_address' => $ip_address,
         );
 
+        // Validate required fields
         foreach ($required_fields as $field) {
             if (empty($data[$field])) {
-                $errors[] = "Attendee $num: missing required field '$field'";
+                $errors[] = "Attendee {$attendee_num}: missing required field '{$field}'";
             }
         }
-        if (!is_email($data['email'])) {
-            $errors[] = "Attendee $num: invalid email address";
+
+        // Validate email format
+        if (!empty($data['email']) && !is_email($data['email'])) {
+            $errors[] = "Attendee {$attendee_num}: invalid email address";
         }
 
+        // Insert if no errors
         if (empty($errors)) {
             $result = $wpdb->insert($table_name, $data);
+            
             if ($result !== false) {
                 $inserted_ids[] = $wpdb->insert_id;
             } else {
-                $errors[] = "Attendee $num: database error — " . $wpdb->last_error;
+                $errors[] = "Attendee {$attendee_num}: database error - " . $wpdb->last_error;
             }
         }
     }
 
+    // Return response
     if (!empty($errors)) {
-        wp_send_json_error(implode('; ', $errors));
-        wp_die();
+        wp_send_json_error(array(
+            'message' => 'Registration validation failed',
+            'errors' => $errors
+        ));
+    } else {
+        // Store registration IDs in session for later linking
+        if (WC()->session) {
+            WC()->session->set('nsa_registration_ids', json_encode($inserted_ids));
+        }
+        
+        wp_send_json_success(array(
+            'message' => count($inserted_ids) . ' registration(s) saved successfully',
+            'registration_ids' => $inserted_ids,
+            'count' => count($inserted_ids),
+            'registering_for' => $global_registering_for
+        ));
     }
-
-    wp_send_json_success(array(
-        'registration_ids' => $inserted_ids,
-        'count' => count($inserted_ids),
-        'message' => count($inserted_ids) . ' registration(s) saved successfully.',
-    ));
-    wp_die();
 }
-add_action('wp_ajax_save_bulk_registrations', 'ajax_save_bulk_registrations');
-add_action('wp_ajax_nopriv_save_bulk_registrations', 'ajax_save_bulk_registrations');
-
+add_action('wp_ajax_nsa_save_registrations', 'nsa_save_bulk_registrations');
+add_action('wp_ajax_nopriv_nsa_save_registrations', 'nsa_save_bulk_registrations');
 
 // ============================================================
-// 6. LINK ORDER TO ALL REGISTRATION IDS (after payment)
+// 6. LINK REGISTRATIONS TO ORDER AFTER PAYMENT
 // ============================================================
-function link_registrations_to_order($order_id)
-{
-    $ids_json = WC()->session ? WC()->session->get('nsa_registration_ids') : null;
-    if (!$ids_json)
+function nsa_link_registrations_to_order($order_id) {
+    if (!WC()->session) {
         return;
-
+    }
+    
+    $ids_json = WC()->session->get('nsa_registration_ids');
+    if (!$ids_json) {
+        return;
+    }
+    
     $ids = json_decode($ids_json, true);
-    if (!is_array($ids) || empty($ids))
+    if (!is_array($ids) || empty($ids)) {
         return;
-
+    }
+    
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
-
+    
     foreach ($ids as $reg_id) {
         $wpdb->update(
             $table_name,
-            array('order_id' => $order_id, 'payment_status' => 'paid'),
+            array(
+                'order_id' => $order_id,
+                'payment_status' => 'paid'
+            ),
             array('id' => intval($reg_id)),
             array('%d', '%s'),
             array('%d')
         );
     }
-
+    
+    // Clear session data
     WC()->session->__unset('nsa_registration_ids');
 }
-add_action('woocommerce_payment_complete', 'link_registrations_to_order');
-
+add_action('woocommerce_payment_complete', 'nsa_link_registrations_to_order');
+add_action('woocommerce_order_status_completed', 'nsa_link_registrations_to_order');
 
 // ============================================================
-// 8. SHORTCODE
+// 7. SHORTCODE FOR REGISTRATION FORM (No Address, Global Hear About)
 // ============================================================
-function registration_form_with_checkout_shortcode_for_organization()
-{
+function nsa_registration_form_shortcode() {
     ob_start();
     ?>
-    <div class="registration-container" id="nsa-reg-app">
-
-        <!-- ── Step indicator ─────────────────────────────────────── -->
-        <div class="nsa-steps mb-4">
-            <div class="nsa-step active" id="step-ind-1">
-                <span class="nsa-step-num">1</span> Billing Details
+    <div class="nsa-registration-container" id="nsaRegistrationApp">
+        <!-- Step Indicator -->
+        <div class="nsa-steps">
+            <div class="nsa-step active" data-step="1">
+                <div class="nsa-step-number">1</div>
+                <div class="nsa-step-label">Registration Options</div>
             </div>
-            <div class="nsa-step-connector"></div>
-            <div class="nsa-step" id="step-ind-2">
-                <span class="nsa-step-num">2</span> Attendees
+            <div class="nsa-step-line"></div>
+            <div class="nsa-step" data-step="2">
+                <div class="nsa-step-number">2</div>
+                <div class="nsa-step-label">Organization Details</div>
             </div>
-            <div class="nsa-step-connector"></div>
-            <div class="nsa-step" id="step-ind-3">
-                <span class="nsa-step-num">3</span> Payment
+            <div class="nsa-step-line"></div>
+            <div class="nsa-step" data-step="3">
+                <div class="nsa-step-number">3</div>
+                <div class="nsa-step-label">Attendee Details</div>
+            </div>
+            <div class="nsa-step-line"></div>
+            <div class="nsa-step" data-step="4">
+                <div class="nsa-step-number">4</div>
+                <div class="nsa-step-label">Payment</div>
             </div>
         </div>
 
-        <!-- ════════════════════════════════════════════════════════
-             STEP 1 — BILLING / ORG DETAILS
-        ═════════════════════════════════════════════════════════ -->
-        <div id="nsa-step-1">
-            <div class="nsa-card mb-4">
+        <!-- Step 1: Global Registration Options -->
+        <div id="nsa-step-1" class="nsa-step-content">
+            <div class="nsa-card">
                 <div class="nsa-card-header">
-                    <h5 class="mb-0">🏢 Billing &amp; Organisation Details</h5>
-                    <p class="text-muted small mb-0 mt-1">
-                        Enter the details of the organisation or individual paying for all attendees.
-                        These details will be recorded as <strong>who_paid</strong> against every registration.
-                    </p>
+                    <h3>🎫 Registration Options (Apply to All Attendees)</h3>
+                    <p>Select the registration package that applies to every attendee in this bulk registration</p>
                 </div>
                 <div class="nsa-card-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Organisation / Company Name <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="org_name" placeholder="e.g. CISON Nigeria" required>
-                            <div class="invalid-feedback">Organisation name is required.</div>
+                    <div class="nsa-form-group">
+                        <label class="nsa-label">Pre-Conference Workshop</label>
+                        <div class="nsa-radio-group">
+                            <label>
+                                <input type="radio" name="global_workshop" value="yes"> Yes, include Workshop
+                            </label>
+                            <label>
+                                <input type="radio" name="global_workshop" value="no" checked> No, Workshop only
+                            </label>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Organisation Email <span class="text-danger">*</span></label>
-                            <input type="email" class="form-control" id="org_email" placeholder="finance@organisation.org"
-                                required>
-                            <div class="invalid-feedback">A valid email is required.</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Organisation Phone</label>
-                            <input type="tel" class="form-control" id="org_phone" placeholder="+234 …">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Contact Person (submitting this form)</label>
-                            <input type="text" class="form-control" id="org_contact" placeholder="Full name">
-                        </div>
+                        <small class="nsa-help-text">Workshop can be combined with either conference option</small>
                     </div>
-
-                    <div class="nsa-who-paid-preview mt-3 p-3 bg-light border rounded small text-muted"
-                        id="who-paid-preview" style="display:none;">
-                        <strong>who_paid will be recorded as:</strong>
-                        <span id="who-paid-value" class="text-dark ms-1 fw-semibold"></span>
+                    
+                    <div class="nsa-form-group">
+                        <label class="nsa-label">Conference Registration <span class="required">*</span></label>
+                        <div class="nsa-radio-group">
+                            <label>
+                                <input type="radio" name="global_conference" value="on-site"> On-Site Conference
+                            </label>
+                            <label>
+                                <input type="radio" name="global_conference" value="virtual"> Virtual Conference
+                            </label>
+                            <label>
+                                <input type="radio" name="global_conference" value="none" checked> No Conference
+                            </label>
+                        </div>
+                        <div class="nsa-error-message" id="confError"></div>
+                    </div>
+                    
+                    <div class="nsa-info-box" id="registrationSummary">
+                        <strong>Selected Package:</strong>
+                        <span id="packageSummary">No conference selected</span>
                     </div>
                 </div>
             </div>
-
-            <div class="d-flex justify-content-end">
-                <button class="btn btn-primary btn-lg px-5" id="btn-to-step-2">
-                    Continue to Attendees →
-                </button>
+            
+            <div class="nsa-buttons">
+                <button class="nsa-btn nsa-btn-primary" id="gotoStep2">Continue to Organization Details →</button>
             </div>
         </div>
 
-        <!-- ════════════════════════════════════════════════════════
-             STEP 2 — ATTENDEES
-        ═════════════════════════════════════════════════════════ -->
-        <div id="nsa-step-2" style="display:none;">
-            <div class="col-12">
-                <label class="form-label fw-semibold">Registering for <span class="text-danger">*</span></label>
-                <p class="text-muted small mb-2">
-                    Workshop may be combined with one conference option.
-                    On-site and virtual cannot both be selected.
-                </p>
-                <div class="form-check">
-                    <input class="att-reg-check" type="checkbox" value="workshop">
-                    <label class="form-check-label">Pre-Conference Workshop</label>
+        <!-- Step 2: Organization Details -->
+        <div id="nsa-step-2" class="nsa-step-content" style="display: none;">
+            <div class="nsa-card">
+                <div class="nsa-card-header">
+                    <h3>🏢 Billing & Organization Information</h3>
+                    <p>Enter the details of the organization or individual responsible for payment</p>
                 </div>
-                <div class="form-check">
-                    <input class="att-reg-check att-conference-opt" type="checkbox" value="conference">
-                    <label class="form-check-label">3rd Annual Conference — On-Site (Early Bird)</label>
+                <div class="nsa-card-body">
+                    <div class="nsa-form-group">
+                        <label>Organization Name <span class="required">*</span></label>
+                        <input type="text" id="org_name" class="nsa-input" placeholder="Enter organization name">
+                        <div class="nsa-error-message"></div>
+                    </div>
+                    
+                    <div class="nsa-form-group">
+                        <label>Organization Email <span class="required">*</span></label>
+                        <input type="email" id="org_email" class="nsa-input" placeholder="finance@organization.com">
+                        <div class="nsa-error-message"></div>
+                    </div>
+                    
+                    <div class="nsa-form-group">
+                        <label>Organization Phone</label>
+                        <input type="tel" id="org_phone" class="nsa-input" placeholder="+1234567890">
+                    </div>
+                    
+                    <div class="nsa-form-group">
+                        <label>How did you hear about this event? <span class="required">*</span></label>
+                        <select id="global_hear_about" class="nsa-input" required>
+                            <option value="">Select an option</option>
+                            <option value="Social Media">Social Media</option>
+                            <option value="Google Search">Google Search</option>
+                            <option value="Word of Mouth">Word of Mouth</option>
+                            <option value="From a Friend">From a Friend</option>
+                            <option value="News Media">News Media</option>
+                            <option value="Email Newsletter">Email Newsletter</option>
+                            <option value="Conference Website">Conference Website</option>
+                            <option value="Professional Network">Professional Network</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <div class="nsa-error-message"></div>
+                    </div>
+                    
+                    <div class="nsa-who-paid-preview" id="whoPaidPreview" style="display: none;">
+                        <strong>Payment recorded as:</strong>
+                        <span id="whoPaidValue"></span>
+                    </div>
                 </div>
-                <div class="form-check">
-                    <input class="att-reg-check att-conference-opt" type="checkbox" value="virtual">
-                    <label class="form-check-label">3rd Annual Conference — Virtual (Early Bird)</label>
-                </div>
-                <div class="att-reg-error text-danger small mt-1" style="display:none;"></div>
             </div>
-
-            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                <div>
-                    <h5 class="mb-0">👥 Attendee Details</h5>
-                    <p class="text-muted small mb-0" id="attendee-count-label">0 attendee(s) added</p>
-                </div>
-                <button class="btn btn-success btn-sm px-4" id="btn-add-attendee">
-                    ＋ Add Attendee
-                </button>
+            
+            <div class="nsa-buttons">
+                <button class="nsa-btn nsa-btn-secondary" id="backToStep1">← Back</button>
+                <button class="nsa-btn nsa-btn-primary" id="gotoStep3">Continue to Attendees →</button>
             </div>
+        </div>
 
-            <!-- Cards render here -->
-            <div id="attendee-list"></div>
-
-            <!-- Empty state -->
-            <div id="attendee-empty" class="nsa-empty-state">
+        <!-- Step 3: Attendee Details (No address fields) -->
+        <div id="nsa-step-3" class="nsa-step-content" style="display: none;">
+            <div class="nsa-attendee-header">
+                <h3>👥 Attendee Registration</h3>
+                <button class="nsa-btn nsa-btn-success" id="addAttendeeBtn">+ Add Attendee</button>
+            </div>
+            
+            <div id="attendeeList"></div>
+            
+            <div id="emptyAttendeeState" class="nsa-empty-state">
                 <div class="nsa-empty-icon">👤</div>
-                <p class="mb-1 fw-semibold">No attendees added yet</p>
-                <p class="text-muted small mb-0">Click <strong>＋ Add Attendee</strong> to begin.</p>
+                <p>No attendees added yet</p>
+                <p class="nsa-text-muted">Click "Add Attendee" to begin registration</p>
             </div>
-
-            <hr class="my-4">
-
-            <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-                <button class="btn btn-outline-secondary" id="btn-back-to-1">← Back</button>
-                <button class="btn btn-primary btn-lg px-5" id="btn-to-checkout" disabled>
-                    Proceed to Checkout →
-                </button>
+            
+            <div class="nsa-buttons">
+                <button class="nsa-btn nsa-btn-secondary" id="backToStep2">← Back</button>
+                <button class="nsa-btn nsa-btn-primary" id="gotoCheckout" disabled>Proceed to Checkout →</button>
             </div>
         </div>
 
-        <!-- ── Checkout modal ─────────────────────────────────────── -->
-        <div class="modal fade" id="checkoutModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-xl">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <div>
-                            <h5 class="modal-title mb-0">Complete Secure Payment</h5>
-                            <p class="text-muted small mb-0" id="checkout-summary-label"></p>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body p-0">
-                        <div id="checkout-container" class="p-3">Loading checkout…</div>
-                    </div>
+        <!-- Checkout Modal -->
+        <div id="checkoutModal" class="nsa-modal" style="display: none;">
+            <div class="nsa-modal-content">
+                <div class="nsa-modal-header">
+                    <h3>Complete Payment</h3>
+                    <span class="nsa-modal-close">&times;</span>
+                </div>
+                <div class="nsa-modal-body" id="checkoutContainer">
+                    <div class="nsa-loading">Loading checkout...</div>
                 </div>
             </div>
         </div>
-    </div><!-- /.registration-container -->
+    </div>
 
-
-    <!-- ════════════════════════════════════════════════════════════
-         ATTENDEE CARD TEMPLATE  (hidden, cloned by JS)
-    ═════════════════════════════════════════════════════════════ -->
-    <template id="attendee-card-tpl">
+    <!-- Attendee Card Template (No address fields, no hear_about) -->
+    <template id="attendeeCardTemplate">
         <div class="nsa-attendee-card" data-attendee-id="">
             <div class="nsa-attendee-header">
                 <div class="nsa-attendee-title">
-                    <span class="nsa-attendee-badge">👤</span>
-                    <strong>Attendee #<span class="att-num"></span></strong>
-                    <span class="nsa-attendee-name-preview text-muted ms-2 small"></span>
+                    <span class="nsa-attendee-icon">👤</span>
+                    <strong>Attendee #<span class="attendee-number"></span></strong>
+                    <span class="nsa-attendee-name-preview"></span>
                 </div>
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary btn-toggle-card"
-                        title="Collapse/Expand">▲</button>
-                    <button type="button" class="btn btn-sm btn-outline-danger btn-remove-attendee" title="Remove">✕
-                        Remove</button>
+                <div class="nsa-attendee-actions">
+                    <button class="nsa-btn-icon toggle-card" title="Collapse/Expand">▲</button>
+                    <button class="nsa-btn-icon remove-attendee" title="Remove Attendee">✕</button>
                 </div>
             </div>
-
+            
             <div class="nsa-attendee-body">
-                <div class="row g-3">
-
-                    <div class="col-md-3 g-3 mb-5">
-                        <label class="form-label">Title <span class="text-danger">*</span></label>
-                        <select class="form-select att-field" name="title" required>
+                <div class="nsa-form-row">
+                    <div class="nsa-form-group">
+                        <label>Title <span class="required">*</span></label>
+                        <select class="nsa-input" data-field="title" required>
                             <option value="">Select</option>
                             <option>Mr.</option>
                             <option>Mrs.</option>
@@ -416,756 +518,964 @@ function registration_form_with_checkout_shortcode_for_organization()
                             <option>Hon.</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label">First Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control att-field att-first-name" name="first_name" required>
+                    
+                    <div class="nsa-form-group">
+                        <label>First Name <span class="required">*</span></label>
+                        <input type="text" class="nsa-input" data-field="first_name" required>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Middle Name</label>
-                        <input type="text" class="form-control att-field" name="middle_name">
+                    
+                    <div class="nsa-form-group">
+                        <label>Middle Name</label>
+                        <input type="text" class="nsa-input" data-field="middle_name">
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Last Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control att-field att-last-name" name="last_name" required>
+                    
+                    <div class="nsa-form-group">
+                        <label>Last Name <span class="required">*</span></label>
+                        <input type="text" class="nsa-input" data-field="last_name" required>
                     </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">Email <span class="text-danger">*</span></label>
-                        <input type="email" class="form-control att-field att-email" name="email" required>
+                </div>
+                
+                <div class="nsa-form-row">
+                    <div class="nsa-form-group">
+                        <label>Email <span class="required">*</span></label>
+                        <input type="email" class="nsa-input" data-field="email" required>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Confirm Email <span class="text-danger">*</span></label>
-                        <input type="email" class="form-control att-field att-confirm-email" name="confirm_email" required>
+                    
+                    <div class="nsa-form-group">
+                        <label>Confirm Email <span class="required">*</span></label>
+                        <input type="email" class="nsa-input" data-field="confirm_email" required>
                     </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">Phone <span class="text-danger">*</span></label>
-                        <input type="tel" class="form-control att-field" name="phone" required>
+                    
+                    <div class="nsa-form-group">
+                        <label>Phone <span class="required">*</span></label>
+                        <input type="tel" class="nsa-input" data-field="phone" required>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Occupation</label>
-                        <input type="text" class="form-control att-field" name="occupation">
+                </div>
+                
+                <div class="nsa-form-row">
+                    <div class="nsa-form-group">
+                        <label>Occupation</label>
+                        <input type="text" class="nsa-input" data-field="occupation">
                     </div>
-
-                    <div class="col-md-4">
-                        <label class="form-label">Gender <span class="text-danger">*</span></label>
-                        <select class="form-select att-field" name="gender" required>
+                    
+                    <div class="nsa-form-group">
+                        <label>Gender <span class="required">*</span></label>
+                        <select class="nsa-input" data-field="gender" required>
                             <option value="">Select</option>
                             <option>Male</option>
                             <option>Female</option>
                             <option>Prefer Not to Answer</option>
                         </select>
                     </div>
-
-                    <div class="col-md-8">
-                        <label class="form-label d-block">CISON Member?</label>
-                        <div class="d-flex gap-4 align-items-center mt-1">
-                            <label class="d-flex align-items-center gap-1 mb-0">
-                                <input type="radio" name="is_cison_member" value="yes" class="att-cison-radio"> Yes
-                            </label>
-                            <label class="d-flex align-items-center gap-1 mb-0">
-                                <input type="radio" name="is_cison_member" value="no" class="att-cison-radio" checked> No
-                            </label>
-                        </div>
-                        <div class="att-cison-id-wrap mt-2" style="display:none;">
-                            <input type="text" class="form-control att-field" name="member_id"
-                                placeholder="CISON ID (8 digits)" pattern="[0-9]{8}"
-                                title="Enter valid CISON ID (8 digits)">
-                        </div>
+                </div>
+                
+                <div class="nsa-form-group">
+                    <label>CISON Membership</label>
+                    <div class="nsa-radio-group">
+                        <label><input type="radio" name="is_member" value="yes"> Yes</label>
+                        <label><input type="radio" name="is_member" value="no" checked> No</label>
                     </div>
-
-                    <!-- Address -->
-                    <div class="col-12">
-                        <label class="form-label">Street Address <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control att-field" name="street" required>
+                    <div class="member-id-field" style="display: none;">
+                        <input type="text" class="nsa-input" data-field="member_id" placeholder="CISON ID (8 digits)" pattern="[0-9]{8}">
+                        <small class="nsa-help-text">Enter 8-digit CISON member ID</small>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">City/Town <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control att-field" name="city" required>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">State <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control att-field" name="state" required>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Postcode</label>
-                        <input type="text" class="form-control att-field" name="postcode">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Country <span class="text-danger">*</span></label>
-                        <select class="form-select att-field" name="country" required>
-                            <option value="">Select</option>
-                            <option value="NG" selected>Nigeria</option>
-                            <option value="GH">Ghana</option>
-                            <option value="KE">Kenya</option>
-                            <option value="US">United States</option>
-                            <option value="GB">United Kingdom</option>
-                        </select>
-                    </div>
-
-                    <!-- Registration options -->
-                    <div class="col-12">
-                        <label class="form-label fw-semibold">Registering for <span class="text-danger">*</span></label>
-                        <p class="text-muted small mb-2">
-                            Workshop may be combined with one conference option.
-                            On-site and virtual cannot both be selected.
-                        </p>
-                        <div class="form-check">
-                            <input class="att-reg-check" type="checkbox" value="workshop">
-                            <label class="form-check-label">Pre-Conference Workshop</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="att-reg-check att-conference-opt" type="checkbox" value="conference">
-                            <label class="form-check-label">3rd Annual Conference — On-Site (Early Bird)</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="att-reg-check att-conference-opt" type="checkbox" value="virtual">
-                            <label class="form-check-label">3rd Annual Conference — Virtual (Early Bird)</label>
-                        </div>
-                        <div class="att-reg-error text-danger small mt-1" style="display:none;"></div>
-                    </div>
-
-                    <!-- <div class="col-md-6">
-                        <label class="form-label">How did you hear about this event?</label>
-                        <select class="form-select att-field" name="hear_about">
-                            <option value="">Select</option>
-                            <option>Social Media</option><option>Google</option>
-                            <option>Word of Mouth</option><option>From a Friend</option>
-                            <option>News Media</option><option>Other</option>
-                        </select>
-                    </div> -->
-
-                </div><!-- /.row -->
-            </div><!-- /.nsa-attendee-body -->
-        </div><!-- /.nsa-attendee-card -->
+                </div>
+            </div>
+        </div>
     </template>
 
-
     <style>
-        .registration-container {
-            max-width: 960px;
+        /* Container Styles */
+        .nsa-registration-container {
+            max-width: 1000px;
             margin: 0 auto;
             padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
-
-        .text-danger {
-            color: #dc3545 !important;
-        }
-
-        /* Steps */
+        
+        /* Step Indicator */
         .nsa-steps {
             display: flex;
             align-items: center;
-            padding: 14px 20px;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 10px;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
         }
-
+        
         .nsa-step {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            color: #999;
-            font-weight: 500;
+            gap: 12px;
             flex: 1;
+            opacity: 0.7;
+            transition: opacity 0.3s;
         }
-
+        
         .nsa-step.active {
-            color: #0d6efd;
+            opacity: 1;
         }
-
-        .nsa-step.done {
-            color: #198754;
+        
+        .nsa-step.completed {
+            opacity: 1;
         }
-
-        .nsa-step-num {
-            display: inline-flex;
+        
+        .nsa-step-number {
+            width: 36px;
+            height: 36px;
+            display: flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            background: rgba(255, 255, 255, 0.2);
             border-radius: 50%;
-            background: #dee2e6;
-            color: #666;
-            font-size: 13px;
-            font-weight: 700;
-            flex-shrink: 0;
+            font-weight: bold;
         }
-
-        .nsa-step.active .nsa-step-num {
-            background: #0d6efd;
-            color: #fff;
+        
+        .nsa-step.active .nsa-step-number {
+            background: white;
+            color: #667eea;
         }
-
-        .nsa-step.done .nsa-step-num {
-            background: #198754;
-            color: #fff;
+        
+        .nsa-step.completed .nsa-step-number {
+            background: #4caf50;
+            color: white;
         }
-
-        .nsa-step-connector {
-            flex: none;
-            width: 32px;
+        
+        .nsa-step-line {
+            width: 50px;
             height: 2px;
-            background: #dee2e6;
+            background: rgba(255, 255, 255, 0.3);
+            margin: 0 10px;
         }
-
-        /* Org card */
+        
+        /* Cards */
         .nsa-card {
-            border: 1px solid #dee2e6;
-            border-radius: 10px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            margin-bottom: 24px;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
-
+        
         .nsa-card-header {
-            background: #f8f9fa;
-            padding: 16px 20px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 20px 24px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #f3f4f6 100%);
+            border-bottom: 1px solid #e0e0e0;
         }
-
+        
+        .nsa-card-header h3 {
+            margin: 0 0 8px 0;
+            font-size: 1.25rem;
+            color: #333;
+        }
+        
+        .nsa-card-header p {
+            margin: 0;
+            color: #666;
+            font-size: 0.875rem;
+        }
+        
         .nsa-card-body {
-            padding: 20px;
+            padding: 24px;
         }
-
-        /* Attendee cards */
-        .nsa-attendee-card {
-            border: 1px solid #dee2e6;
-            border-radius: 10px;
-            margin-bottom: 16px;
-            overflow: hidden;
-            transition: box-shadow .15s;
+        
+        /* Form Elements */
+        .nsa-form-group {
+            margin-bottom: 20px;
         }
-
-        .nsa-attendee-card:hover {
-            box-shadow: 0 2px 10px rgba(0, 0, 0, .08);
+        
+        .nsa-form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
         }
-
-        .nsa-attendee-card.is-invalid-card {
+        
+        .nsa-form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 0.875rem;
+            color: #333;
+        }
+        
+        .required {
+            color: #dc3545;
+        }
+        
+        .nsa-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            transition: all 0.15s ease;
+        }
+        
+        .nsa-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .nsa-input.is-invalid {
             border-color: #dc3545;
+            background-color: #fff8f8;
         }
-
+        
+        .nsa-error-message {
+            color: #dc3545;
+            font-size: 0.75rem;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .nsa-help-text {
+            display: block;
+            color: #6c757d;
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+        
+        /* Radio and Checkbox Groups */
+        .nsa-radio-group {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .nsa-radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: normal;
+            cursor: pointer;
+            margin-bottom: 0;
+        }
+        
+        /* Info Box */
+        .nsa-info-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f0fe;
+            border-left: 4px solid #667eea;
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        
+        /* Attendee Cards */
+        .nsa-attendee-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            background: white;
+            transition: box-shadow 0.2s;
+        }
+        
+        .nsa-attendee-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .nsa-attendee-card.is-invalid {
+            border-color: #dc3545;
+            background-color: #fff8f8;
+        }
+        
         .nsa-attendee-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 16px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
+            padding: 16px 20px;
+            background: #f9fafb;
             cursor: pointer;
-            user-select: none;
+            border-bottom: 1px solid #e0e0e0;
         }
-
+        
         .nsa-attendee-title {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 10px;
         }
-
-        .nsa-attendee-badge {
-            font-size: 18px;
-            line-height: 1;
+        
+        .nsa-attendee-icon {
+            font-size: 20px;
         }
-
+        
+        .nsa-attendee-name-preview {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        
+        .nsa-attendee-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .nsa-btn-icon {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px 10px;
+            font-size: 16px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        
+        .nsa-btn-icon:hover {
+            background: #e5e7eb;
+        }
+        
         .nsa-attendee-body {
             padding: 20px;
         }
-
+        
         .nsa-attendee-body.collapsed {
             display: none;
         }
-
-        /* Empty state */
+        
+        /* Buttons */
+        .nsa-btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .nsa-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .nsa-btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .nsa-btn-primary:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .nsa-btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .nsa-btn-secondary:hover {
+            background: #5c636a;
+        }
+        
+        .nsa-btn-success {
+            background: #10b981;
+            color: white;
+        }
+        
+        .nsa-btn-success:hover {
+            background: #059669;
+        }
+        
+        .nsa-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+            gap: 15px;
+        }
+        
+        /* Empty State */
         .nsa-empty-state {
             text-align: center;
-            padding: 48px 20px;
-            border: 2px dashed #dee2e6;
-            border-radius: 10px;
-            color: #666;
+            padding: 60px 20px;
+            background: #f9fafb;
+            border: 2px dashed #d1d5db;
+            border-radius: 12px;
         }
-
+        
         .nsa-empty-icon {
             font-size: 48px;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
-
-        .btn:disabled {
-            opacity: .6;
-            cursor: not-allowed;
+        
+        .nsa-text-muted {
+            color: #6c757d;
+            font-size: 0.875rem;
         }
-
-        #checkout-container .woocommerce {
+        
+        /* Who Paid Preview */
+        .nsa-who-paid-preview {
+            margin-top: 20px;
+            padding: 12px;
+            background: #e8f0fe;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            color: #1e3a8a;
+        }
+        
+        /* Modal */
+        .nsa-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .nsa-modal-content {
+            background: white;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            border-radius: 12px;
+            overflow: auto;
+            animation: slideIn 0.3s;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .nsa-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .nsa-modal-header h3 {
+            margin: 0;
+        }
+        
+        .nsa-modal-close {
+            font-size: 28px;
+            cursor: pointer;
+            color: white;
+            transition: transform 0.2s;
+        }
+        
+        .nsa-modal-close:hover {
+            transform: scale(1.1);
+        }
+        
+        .nsa-modal-body {
+            padding: 20px;
+        }
+        
+        .nsa-loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nsa-form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .nsa-steps {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .nsa-step-line {
+                display: none;
+            }
+            
+            .nsa-buttons {
+                flex-direction: column;
+            }
+            
+            .nsa-step {
+                width: 100%;
+            }
         }
     </style>
 
+    <script>
+    jQuery(document).ready(function($) {
+        let attendeeCounter = 0;
+        let currentStep = 1;
+        
+        // Product IDs mapping based on global selections
+        const PRODUCTS = {
+            workshop_only: 12816,
+            conference_only: 12817,
+            virtual_only: 12818,
+            workshop_conference: 12670,
+            workshop_virtual: 12672
+        };
+        
+        // Step navigation
+        function showStep(step) {
+            $('#nsa-step-1, #nsa-step-2, #nsa-step-3').hide();
+            $(`#nsa-step-${step}`).show();
+            
+            $('.nsa-step').removeClass('active completed');
+            for (let i = 1; i < step; i++) {
+                $(`.nsa-step[data-step="${i}"]`).addClass('completed');
+            }
+            $(`.nsa-step[data-step="${step}"]`).addClass('active');
+            
+            currentStep = step;
+        }
+        
+        // Update registration summary
+        function updateRegistrationSummary() {
+            const hasWorkshop = $('input[name="global_workshop"]:checked').val() === 'yes';
+            const conferenceType = $('input[name="global_conference"]:checked').val();
+            
+            let summary = '';
+            if (hasWorkshop) {
+                summary += '✓ Pre-Conference Workshop<br>';
+            }
+            
+            if (conferenceType === 'on-site') {
+                summary += '✓ On-Site Conference';
+            } else if (conferenceType === 'virtual') {
+                summary += '✓ Virtual Conference';
+            } else {
+                summary += '✗ No Conference Selected';
+            }
+            
+            $('#packageSummary').html(summary);
+        }
+        
+        // Validate registration options
+        function validateRegistrationOptions() {
+            const conferenceType = $('input[name="global_conference"]:checked').val();
+            if (!conferenceType) {
+                $('#confError').text('Please select a conference option').show();
+                return false;
+            }
+            $('#confError').hide();
+            return true;
+        }
+        
+        // Add attendee card
+        function addAttendee() {
+            attendeeCounter++;
+            const template = $('#attendeeCardTemplate').html();
+            const $card = $(template);
+            
+            $card.attr('data-attendee-id', attendeeCounter);
+            $card.find('.attendee-number').text(attendeeCounter);
+            
+            // Make radio group unique
+            $card.find('input[name="is_member"]').attr('name', `is_member_${attendeeCounter}`);
+            
+            // Bind events
+            bindCardEvents($card);
+            
+            $('#attendeeList').append($card);
+            $('#emptyAttendeeState').hide();
+            updateAttendeeCount();
+            updateProceedButton();
+            
+            // Scroll to new card
+            $card[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        
+        // Bind card events
+        function bindCardEvents($card) {
+            // Toggle collapse
+            $card.find('.toggle-card').on('click', function() {
+                const $body = $card.find('.nsa-attendee-body');
+                $body.toggleClass('collapsed');
+                $(this).text($body.hasClass('collapsed') ? '▼' : '▲');
+            });
+            
+            $card.find('.nsa-attendee-header').on('click', function(e) {
+                if (!$(e.target).closest('.nsa-attendee-actions').length) {
+                    $card.find('.toggle-card').click();
+                }
+            });
+            
+            // Remove attendee
+            $card.find('.remove-attendee').on('click', function() {
+                if ($('#attendeeList .nsa-attendee-card').length === 1) {
+                    alert('You need at least one attendee. Please add another before removing this one.');
+                    return;
+                }
+                $card.remove();
+                updateAttendeeNumbers();
+                updateAttendeeCount();
+                updateProceedButton();
+            });
+            
+            // Name preview
+            $card.find('[data-field="first_name"], [data-field="last_name"]').on('input', function() {
+                const firstName = $card.find('[data-field="first_name"]').val();
+                const lastName = $card.find('[data-field="last_name"]').val();
+                const preview = [firstName, lastName].filter(Boolean).join(' ');
+                $card.find('.nsa-attendee-name-preview').text(preview ? `— ${preview}` : '');
+            });
+            
+            // CISON member toggle
+            $card.find('input[name^="is_member"]').on('change', function() {
+                const $memberField = $card.find('.member-id-field');
+                if ($(this).val() === 'yes') {
+                    $memberField.slideDown();
+                    $memberField.find('input').prop('required', true);
+                } else {
+                    $memberField.slideUp();
+                    $memberField.find('input').prop('required', false).val('');
+                }
+            });
+            
+            // Clear validation on input
+            $card.find('.nsa-input').on('input change', function() {
+                $(this).removeClass('is-invalid');
+                $(this).siblings('.nsa-error-message').hide();
+            });
+        }
+        
+        function updateAttendeeNumbers() {
+            $('#attendeeList .nsa-attendee-card').each(function(index) {
+                $(this).find('.attendee-number').text(index + 1);
+                $(this).attr('data-attendee-id', index + 1);
+            });
+        }
+        
+        function updateAttendeeCount() {
+            const count = $('#attendeeList .nsa-attendee-card').length;
+            if (count === 0) {
+                $('#emptyAttendeeState').show();
+            } else {
+                $('#emptyAttendeeState').hide();
+            }
+        }
+        
+        function updateProceedButton() {
+            const hasAttendees = $('#attendeeList .nsa-attendee-card').length > 0;
+            $('#gotoCheckout').prop('disabled', !hasAttendees);
+        }
+        
+        // Validate all attendees
+        function validateAllAttendees() {
+            let isValid = true;
+            const errors = [];
+            
+            $('#attendeeList .nsa-attendee-card').each(function(index) {
+                const $card = $(this);
+                const num = index + 1;
+                let cardValid = true;
+                
+                // Check required fields
+                $card.find('[data-field][required]').each(function() {
+                    if (!$(this).val()) {
+                        $(this).addClass('is-invalid');
+                        cardValid = false;
+                    }
+                });
+                
+                // Check email match
+                const email = $card.find('[data-field="email"]').val();
+                const confirmEmail = $card.find('[data-field="confirm_email"]').val();
+                if (email !== confirmEmail) {
+                    $card.find('[data-field="confirm_email"]').addClass('is-invalid');
+                    errors.push(`Attendee ${num}: Email addresses do not match`);
+                    cardValid = false;
+                }
+                
+                // Check email format
+                if (email && !isValidEmail(email)) {
+                    $card.find('[data-field="email"]').addClass('is-invalid');
+                    errors.push(`Attendee ${num}: Invalid email format`);
+                    cardValid = false;
+                }
+                
+                if (!cardValid) {
+                    $card.addClass('is-invalid');
+                    isValid = false;
+                } else {
+                    $card.removeClass('is-invalid');
+                }
+            });
+            
+            return { isValid, errors };
+        }
+        
+        // Collect attendee data
+        function collectAttendeeData() {
+            const attendees = [];
+            
+            $('#attendeeList .nsa-attendee-card').each(function() {
+                const $card = $(this);
+                
+                const attendee = {
+                    title: $card.find('[data-field="title"]').val(),
+                    first_name: $card.find('[data-field="first_name"]').val(),
+                    middle_name: $card.find('[data-field="middle_name"]').val(),
+                    last_name: $card.find('[data-field="last_name"]').val(),
+                    email: $card.find('[data-field="email"]').val(),
+                    phone: $card.find('[data-field="phone"]').val(),
+                    occupation: $card.find('[data-field="occupation"]').val(),
+                    gender: $card.find('[data-field="gender"]').val(),
+                    member_id: $card.find('[data-field="member_id"]').val() || ''
+                };
+                
+                attendees.push(attendee);
+            });
+            
+            return attendees;
+        }
+        
+        // Determine product based on global selections
+        function determineProduct() {
+            const hasWorkshop = $('input[name="global_workshop"]:checked').val() === 'yes';
+            const conferenceType = $('input[name="global_conference"]:checked').val();
+            
+            if (hasWorkshop && conferenceType === 'on-site') return PRODUCTS.workshop_conference;
+            if (hasWorkshop && conferenceType === 'virtual') return PRODUCTS.workshop_virtual;
+            if (hasWorkshop) return PRODUCTS.workshop_only;
+            if (conferenceType === 'on-site') return PRODUCTS.conference_only;
+            if (conferenceType === 'virtual') return PRODUCTS.virtual_only;
+            return null;
+        }
+        
+        // Process checkout
+        async function processCheckout() {
+            // Validate registration options
+            if (!validateRegistrationOptions()) {
+                return;
+            }
+            
+            // Validate organization details
+            const orgName = $('#org_name').val().trim();
+            const orgEmail = $('#org_email').val().trim();
+            const hearAbout = $('#global_hear_about').val();
+            
+            if (!orgName) {
+                $('#org_name').addClass('is-invalid').siblings('.nsa-error-message').text('Organization name is required').show();
+                showStep(2);
+                return;
+            }
+            
+            if (!orgEmail || !isValidEmail(orgEmail)) {
+                $('#org_email').addClass('is-invalid').siblings('.nsa-error-message').text('Valid email is required').show();
+                showStep(2);
+                return;
+            }
+            
+            if (!hearAbout) {
+                $('#global_hear_about').addClass('is-invalid').siblings('.nsa-error-message').text('Please tell us how you heard about this event').show();
+                showStep(2);
+                return;
+            }
+            
+            // Validate attendees
+            const validation = validateAllAttendees();
+            if (!validation.isValid) {
+                showStep(3);
+                alert('Please fix the following errors:\n\n• ' + validation.errors.join('\n• '));
+                return;
+            }
+            
+            const attendees = collectAttendeeData();
+            const attendeeCount = attendees.length;
+            
+            // Save registrations
+            $('#gotoCheckout').prop('disabled', true).text('Saving...');
+            
+            try {
+                const saveResponse = await $.ajax({
+                    url: nsa_ajax.ajax_url,
+                    method: 'POST',
+                    data: {
+                        action: 'nsa_save_registrations',
+                        nonce: nsa_ajax.nonce,
+                        org_name: orgName,
+                        org_email: orgEmail,
+                        org_phone: $('#org_phone').val().trim(),
+                        attendees: JSON.stringify(attendees),
+                        global_workshop: $('input[name="global_workshop"]:checked').val(),
+                        global_conference_type: $('input[name="global_conference"]:checked').val(),
+                        global_hear_about: hearAbout
+                    }
+                });
+                
+                if (!saveResponse.success) {
+                    alert('Error saving registrations: ' + (saveResponse.data.message || 'Unknown error'));
+                    $('#gotoCheckout').prop('disabled', false).text('Proceed to Checkout →');
+                    return;
+                }
+                
+                // Determine product and quantity
+                const productId = determineProduct();
+                if (!productId) {
+                    alert('Unable to determine registration product');
+                    $('#gotoCheckout').prop('disabled', false).text('Proceed to Checkout →');
+                    return;
+                }
+                
+                // Clear cart and add product
+                await $.ajax({
+                    url: nsa_ajax.ajax_url,
+                    method: 'POST',
+                    data: {
+                        action: 'nsa_clear_cart',
+                        nonce: nsa_ajax.nonce
+                    }
+                });
+                
+                const cartResponse = await $.ajax({
+                    url: nsa_ajax.ajax_url,
+                    method: 'POST',
+                    data: {
+                        action: 'nsa_add_to_cart',
+                        product_id: productId,
+                        quantity: attendeeCount,
+                        nonce: nsa_ajax.nonce
+                    }
+                });
+                
+                if (!cartResponse.success) {
+                    alert('Error adding to cart: ' + cartResponse.data);
+                    $('#gotoCheckout').prop('disabled', false).text('Proceed to Checkout →');
+                    return;
+                }
+                
+                // Load checkout modal
+                $('#gotoCheckout').text('Loading checkout...');
+                const checkoutResponse = await $.ajax({
+                    url: nsa_ajax.ajax_url,
+                    method: 'POST',
+                    data: {
+                        action: 'nsa_load_checkout',
+                        nonce: nsa_ajax.nonce
+                    }
+                });
+                
+                if (checkoutResponse.success) {
+                    $('#checkoutContainer').html(checkoutResponse.data.html);
+                    $('#checkoutModal').show();
+                    
+                    // Update checkout summary
+                    const summary = `${orgName} · ${attendeeCount} attendee(s) · Package: ${saveResponse.data.registering_for}`;
+                    $('.nsa-modal-header p').remove();
+                    $('.nsa-modal-header').append(`<p style="margin: 5px 0 0; font-size: 12px;">${summary}</p>`);
+                    
+                    // Trigger WooCommerce checkout update
+                    setTimeout(() => {
+                        $(document.body).trigger('update_checkout');
+                    }, 100);
+                } else {
+                    alert('Error loading checkout: ' + checkoutResponse.data);
+                }
+                
+                $('#gotoCheckout').prop('disabled', false).text('Proceed to Checkout →');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+                $('#gotoCheckout').prop('disabled', false).text('Proceed to Checkout →');
+            }
+        }
+        
+        function isValidEmail(email) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        }
+        
+        // Live preview for who_paid
+        function updateWhoPaidPreview() {
+            const orgName = $('#org_name').val().trim();
+            const orgEmail = $('#org_email').val().trim();
+            
+            if (orgName || orgEmail) {
+                $('#whoPaidValue').text(`${orgName || '?'}|${orgEmail || '?'}`);
+                $('#whoPaidPreview').show();
+            } else {
+                $('#whoPaidPreview').hide();
+            }
+        }
+        
+        // Event listeners
+        $('#gotoStep2').on('click', () => {
+            if (validateRegistrationOptions()) {
+                showStep(2);
+            }
+        });
+        
+        $('#gotoStep3').on('click', () => {
+            const orgName = $('#org_name').val().trim();
+            const orgEmail = $('#org_email').val().trim();
+            const hearAbout = $('#global_hear_about').val();
+            
+            if (!orgName) {
+                $('#org_name').addClass('is-invalid').siblings('.nsa-error-message').text('Organization name is required').show();
+                return;
+            }
+            if (!orgEmail || !isValidEmail(orgEmail)) {
+                $('#org_email').addClass('is-invalid').siblings('.nsa-error-message').text('Valid email is required').show();
+                return;
+            }
+            if (!hearAbout) {
+                $('#global_hear_about').addClass('is-invalid').siblings('.nsa-error-message').text('Please tell us how you heard about this event').show();
+                return;
+            }
+            
+            if ($('#attendeeList .nsa-attendee-card').length === 0) {
+                addAttendee();
+            }
+            showStep(3);
+        });
+        
+        $('#backToStep1').on('click', () => showStep(1));
+        $('#backToStep2').on('click', () => showStep(2));
+        $('#gotoCheckout').on('click', processCheckout);
+        $('#addAttendeeBtn').on('click', addAttendee);
+        
+        $('input[name="global_workshop"], input[name="global_conference"]').on('change', updateRegistrationSummary);
+        $('#org_name, #org_email').on('input', updateWhoPaidPreview);
+        
+        // Clear validation on input
+        $('#global_hear_about').on('change', function() {
+            $(this).removeClass('is-invalid');
+            $(this).siblings('.nsa-error-message').hide();
+        });
+        
+        // Modal close
+        $('.nsa-modal-close, #checkoutModal').on('click', function(e) {
+            if (e.target === this || $(e.target).hasClass('nsa-modal-close')) {
+                $('#checkoutModal').hide();
+                if (window.paymentCompleted) {
+                    location.reload();
+                }
+            }
+        });
+        
+        // Listen for WooCommerce payment completion
+        $(document.body).on('order_received', function() {
+            window.paymentCompleted = true;
+        });
+        
+        // Initial setup
+        showStep(1);
+        updateRegistrationSummary();
+        addAttendee(); // Add first attendee by default
+    });
+    </script>
     <?php
     return ob_get_clean();
 }
-add_shortcode('registration_wc_checkout_for_organization', 'registration_form_with_checkout_shortcode_for_organization');
-
-
-// ============================================================
-// 9. INLINE JS
-// ============================================================
-function add_registration_script_for_organization()
-{
-    $script = <<<'ENDJS'
-jQuery(document).ready(function ($) {
-
-    // ── Product map ────────────────────────────────────────────────
-    var PRODUCTS = {
-        workshop            : 12816,
-        conference          : 12817,
-        virtual             : 12818,
-        workshop_conference : 12670,
-        workshop_virtual    : 12672
-    };
-
-    // ── Internal counter (unique per page load, never reused) ──────
-    var _uid = 0;
-    function nextId() { return ++_uid; }
-
-    // ──────────────────────────────────────────────────────────────
-    // STEP MANAGEMENT
-    // ──────────────────────────────────────────────────────────────
-    function setStep(n) {
-        $('#nsa-step-1, #nsa-step-2').hide();
-        $('#nsa-step-' + n).show();
-        $('.nsa-step').removeClass('active done');
-        for (var i = 1; i < n; i++) {
-            $('#step-ind-' + i).addClass('done').find('.nsa-step-num').html('✓');
-        }
-        $('#step-ind-' + n).addClass('active');
-    }
-
-    // ── Step 1 → Step 2 ───────────────────────────────────────────
-    $('#btn-to-step-2').on('click', function () {
-        var orgName  = $('#org_name').val().trim();
-        var orgEmail = $('#org_email').val().trim();
-        var valid    = true;
-
-        if (!orgName) {
-            $('#org_name').addClass('is-invalid');
-            valid = false;
-        } else {
-            $('#org_name').removeClass('is-invalid');
-        }
-        if (!orgEmail || !isValidEmail(orgEmail)) {
-            $('#org_email').addClass('is-invalid');
-            valid = false;
-        } else {
-            $('#org_email').removeClass('is-invalid');
-        }
-        if (!valid) return;
-
-        setStep(2);
-        if ($('#attendee-list .nsa-attendee-card').length === 0) {
-            addAttendeeCard();
-        }
-    });
-
-    // ── Live who_paid preview on step 1 ───────────────────────────
-    $('#org_name, #org_email').on('input', function () {
-        var n = $('#org_name').val().trim();
-        var e = $('#org_email').val().trim();
-        if (n || e) {
-            $('#who-paid-value').text((n || '…') + '|' + (e || '…'));
-            $('#who-paid-preview').show();
-        } else {
-            $('#who-paid-preview').hide();
-        }
-    });
-
-    // ── Back ───────────────────────────────────────────────────────
-    $('#btn-back-to-1').on('click', function () { setStep(1); });
-
-
-    // ──────────────────────────────────────────────────────────────
-    // ADD ATTENDEE CARD
-    // ──────────────────────────────────────────────────────────────
-    $('#btn-add-attendee').on('click', addAttendeeCard);
-
-    function addAttendeeCard() {
-        var id  = nextId();
-        var tpl = document.getElementById('attendee-card-tpl');
-        var frag = document.importNode(tpl.content, true);
-
-        // Serialise to string so jQuery can work with it cleanly
-        var tmp = document.createElement('div');
-        tmp.appendChild(frag);
-        var html = tmp.innerHTML;
-
-        // Stamp data-attendee-id
-        html = html.replace('data-attendee-id=""', 'data-attendee-id="' + id + '"');
-
-        var card = $(html);
-        card.find('.att-num').text(id);
-
-        // Unique radio group name per card
-        card.find('input[type=radio]').attr('name', 'is_cison_member_' + id);
-
-        $('#attendee-list').append(card);
-
-        // Grab the live node
-        var live = $('#attendee-list .nsa-attendee-card[data-attendee-id="' + id + '"]');
-        bindCardEvents(live, id);
-
-        updateUI();
-
-        // Scroll the new card into view
-        live[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // BIND EVENTS TO A CARD
-    // ──────────────────────────────────────────────────────────────
-    function bindCardEvents(card, id) {
-
-        // Remove
-        card.find('.btn-remove-attendee').on('click', function (e) {
-            e.stopPropagation();
-            if ($('#attendee-list .nsa-attendee-card').length === 1) {
-                alert('You need at least one attendee. Add another before removing this one.');
-                return;
-            }
-            card.slideUp(200, function () {
-                card.remove();
-                renumberCards();
-                updateUI();
-            });
-        });
-
-        // Collapse header click
-        card.find('.nsa-attendee-header').on('click', function (e) {
-            if ($(e.target).closest('button').length) return;
-            toggleCollapse(card);
-        });
-        card.find('.btn-toggle-card').on('click', function (e) {
-            e.stopPropagation();
-            toggleCollapse(card);
-        });
-
-        // Name preview
-        card.find('.att-first-name, .att-last-name').on('input', function () {
-            var fn = card.find('.att-first-name').val().trim();
-            var ln = card.find('.att-last-name').val().trim();
-            card.find('.nsa-attendee-name-preview')
-                .text(fn || ln ? '— ' + [fn, ln].filter(Boolean).join(' ') : '');
-        });
-
-        // CISON member toggle
-        card.find('.att-cison-radio').on('change', function () {
-            var wrap = card.find('.att-cison-id-wrap');
-            if ($(this).val() === 'yes') {
-                wrap.slideDown(150);
-                wrap.find('input').prop('required', true);
-            } else {
-                wrap.slideUp(150);
-                wrap.find('input').prop('required', false).val('');
-            }
-        });
-
-        // Conference mutual exclusion
-        card.find('.att-conference-opt').on('change', function () {
-            if ($(this).is(':checked')) {
-                card.find('.att-conference-opt').not(this).prop('checked', false);
-            }
-            updateRegError(card);
-        });
-        card.find('.att-reg-check').on('change', function () {
-            updateRegError(card);
-        });
-
-        // Clear is-invalid on any input
-        card.find('.att-field').on('change input', function () {
-            $(this).removeClass('is-invalid');
-        });
-    }
-
-    function toggleCollapse(card) {
-        var body   = card.find('.nsa-attendee-body');
-        var toggle = card.find('.btn-toggle-card');
-        if (body.hasClass('collapsed')) {
-            body.removeClass('collapsed');
-            toggle.text('▲');
-        } else {
-            body.addClass('collapsed');
-            toggle.text('▼');
-        }
-    }
-
-    function updateRegError(card) {
-        var s = getSelections(card);
-        var errDiv = card.find('.att-reg-error');
-        if (s.conference && s.virtual) {
-            errDiv.text('On-Site and Virtual cannot both be selected. Please choose one.').show();
-        } else {
-            errDiv.hide();
-        }
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // UI HELPERS
-    // ──────────────────────────────────────────────────────────────
-    function renumberCards() {
-        $('#attendee-list .nsa-attendee-card').each(function (i) {
-            $(this).find('.att-num').first().text(i + 1);
-        });
-        var count = $('#attendee-list .nsa-attendee-card').length;
-        $('#attendee-count-label').text(count + ' attendee(s) added');
-    }
-
-    function updateUI() {
-        var count = $('#attendee-list .nsa-attendee-card').length;
-        $('#attendee-empty').toggle(count === 0);
-        $('#btn-to-checkout').prop('disabled', count === 0);
-        $('#attendee-count-label').text(count + ' attendee(s) added');
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // SELECTIONS HELPERS
-    // ──────────────────────────────────────────────────────────────
-    function getSelections(card) {
-        return {
-            workshop   : card.find('.att-reg-check[value="workshop"]').is(':checked'),
-            conference : card.find('.att-reg-check[value="conference"]').is(':checked'),
-            virtual    : card.find('.att-reg-check[value="virtual"]').is(':checked')
-        };
-    }
-
-    function selectionsToString(s) {
-        var parts = [];
-        if (s.workshop)   parts.push('workshop');
-        if (s.conference) parts.push('conference');
-        if (s.virtual)    parts.push('virtual');
-        return parts.join(', ');
-    }
-
-    function resolveProduct(s) {
-        if (s.workshop && s.conference) return PRODUCTS.workshop_conference;
-        if (s.workshop && s.virtual)    return PRODUCTS.workshop_virtual;
-        if (s.workshop)                 return PRODUCTS.workshop;
-        if (s.conference)               return PRODUCTS.conference;
-        if (s.virtual)                  return PRODUCTS.virtual;
-        return null;
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // VALIDATE ALL ATTENDEE CARDS
-    // Returns { valid: bool, errors: [], attendees: [] }
-    // ──────────────────────────────────────────────────────────────
-    function validateAll() {
-        var errors   = [];
-        var dataList = [];
-
-        $('#attendee-list .nsa-attendee-card').each(function (idx) {
-            var card = $(this);
-            var num  = idx + 1;
-            var ok   = true;
-
-            // Clear previous marks
-            card.find('.is-invalid').removeClass('is-invalid');
-
-            // Required fields
-            card.find('.att-field[required]').each(function () {
-                if (!$(this).val().trim()) {
-                    $(this).addClass('is-invalid');
-                    ok = false;
-                }
-            });
-
-            // Email match
-            var email   = card.find('.att-email').val().trim();
-            var confirm = card.find('.att-confirm-email').val().trim();
-            if (email && confirm && email !== confirm) {
-                card.find('.att-confirm-email').addClass('is-invalid');
-                errors.push('Attendee ' + num + ': email addresses do not match');
-                ok = false;
-            }
-            if (email && !isValidEmail(email)) {
-                card.find('.att-email').addClass('is-invalid');
-                errors.push('Attendee ' + num + ': invalid email format');
-                ok = false;
-            }
-
-            // Registration options
-            var s = getSelections(card);
-            if (s.conference && s.virtual) {
-                errors.push('Attendee ' + num + ': cannot select both On-Site and Virtual');
-                ok = false;
-            }
-            if (!s.workshop && !s.conference && !s.virtual) {
-                errors.push('Attendee ' + num + ': please select at least one registration option');
-                ok = false;
-            }
-
-            // Generic required-field errors
-            if (!ok && card.find('[required].is-invalid').length) {
-                errors.push('Attendee ' + num + ': please fill all required fields');
-            }
-
-            card.toggleClass('is-invalid-card', !ok);
-
-            // Expand collapsed invalid cards
-            if (!ok && card.find('.nsa-attendee-body').hasClass('collapsed')) {
-                card.find('.nsa-attendee-body').removeClass('collapsed');
-                card.find('.btn-toggle-card').text('▲');
-            }
-
-            // Collect data for this attendee
-            var data = {};
-            card.find('.att-field').each(function () {
-                var raw  = $(this).attr('name') || '';
-                var name = raw.replace(/_\d+$/, '');
-                if (name) data[name] = $(this).val().trim();
-            });
-            data.registering_for = selectionsToString(s);
-            data.member_id       = card.find('[name^="member_id"]').val().trim();
-
-            dataList.push(data);
-        });
-
-        return { valid: errors.length === 0, errors: errors, attendees: dataList };
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // BUILD CART PLAN  — groups attendees by product, sums quantities
-    // ──────────────────────────────────────────────────────────────
-    function buildCartPlan(attendeesData) {
-        var counts = {};
-        attendeesData.forEach(function (a) {
-            var s = {
-                workshop   : a.registering_for.indexOf('workshop')   >= 0,
-                conference : a.registering_for.indexOf('conference') >= 0,
-                virtual    : a.registering_for.indexOf('virtual')    >= 0
-            };
-            var pid = resolveProduct(s);
-            if (pid) counts[pid] = (counts[pid] || 0) + 1;
-        });
-        var plan = [];
-        Object.keys(counts).forEach(function (pid) {
-            plan.push({ product_id: parseInt(pid, 10), quantity: counts[pid] });
-        });
-        return plan;  // e.g. [{product_id:12817, quantity:3}, {product_id:12670, quantity:1}]
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // PROCEED TO CHECKOUT
-    // ──────────────────────────────────────────────────────────────
-    $('#btn-to-checkout').on('click', function () {
-        var result = validateAll();
-        if (!result.valid) {
-            // De-duplicate error messages
-            var unique = result.errors.filter(function (v, i, a) { return a.indexOf(v) === i; });
-            alert('Please fix the following:\n\n• ' + unique.join('\n• '));
-            return;
-        }
-
-        var orgName  = $('#org_name').val().trim();
-        var orgEmail = $('#org_email').val().trim();
-        var orgPhone = $('#org_phone').val().trim();
-        var btn      = $(this).prop('disabled', true).text('Saving…');
-
-        // 1. Save all registrations to DB
-        $.post(ajax_object.ajax_url, {
-            action    : 'save_bulk_registrations',
-            nonce     : ajax_object.nonce,
-            org_name  : orgName,
-            org_email : orgEmail,
-            org_phone : orgPhone,
-            attendees : JSON.stringify(result.attendees)
-        })
-        .done(function (resp) {
-            if (!resp.success) {
-                alert('Could not save registrations:\n\n' + resp.data);
-                btn.prop('disabled', false).text('Proceed to Checkout →');
-                return;
-            }
-
-            console.log('Saved', resp.data.count, 'registrations:', resp.data.registration_ids);
-
-            // 2. Clear cart, then add products
-            var cartPlan = buildCartPlan(result.attendees);
-            btn.text('Adding to cart…');
-
-            $.post(ajax_object.ajax_url, { action: 'clear_cart', nonce: ajax_object.nonce })
-            .done(function () {
-                // Add the first product/quantity (primary payment item)
-                var first = cartPlan[0];
-                $.post(ajax_object.ajax_url, {
-                    action     : 'add_to_cart_dynamic',
-                    product_id : first.product_id,
-                    quantity   : first.quantity,
-                    nonce      : ajax_object.nonce
-                })
-                .done(function (cartResp) {
-                    if (!cartResp.success) {
-                        alert('Cart error: ' + cartResp.data);
-                        btn.prop('disabled', false).text('Proceed to Checkout →');
-                        return;
-                    }
-
-                    btn.text('Loading checkout…');
-
-                    // 3. Load WooCommerce checkout into modal
-                    $.post(ajax_object.ajax_url, {
-                        action : 'load_wc_checkout',
-                        nonce  : ajax_object.nonce
-                    })
-                    .done(function (checkoutResp) {
-                        if (checkoutResp.success) {
-                            var n = resp.data.count;
-                            $('#checkout-summary-label').text(
-                                orgName + ' · ' + n + ' attendee' + (n !== 1 ? 's' : '')
-                            );
-                            $('#checkout-container').html(checkoutResp.data.html);
-                            setStep(3);
-                            $('#checkoutModal').modal('show');
-                            $(document.body).trigger('update_checkout');
-                            $(document.body).trigger('wc_fragment_refresh');
-                        } else {
-                            alert('Checkout error: ' + checkoutResp.data);
-                        }
-                        btn.prop('disabled', false).text('Proceed to Checkout →');
-                    })
-                    .fail(networkError.bind(null, btn));
-                })
-                .fail(networkError.bind(null, btn));
-            })
-            .fail(networkError.bind(null, btn));
-        })
-        .fail(networkError.bind(null, btn));
-    });
-
-    function networkError(btn) {
-        alert('Network error. Please check your connection and try again.');
-        btn.prop('disabled', false).text('Proceed to Checkout →');
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // PAYMENT DETECTION
-    // ──────────────────────────────────────────────────────────────
-    $('#checkoutModal').on('hidden.bs.modal', function () {
-        if (window.paymentCompleted) { location.reload(); }
-    });
-    $(document.body).on('order_received updated_wc_div', function () {
-        window.paymentCompleted = true;
-    });
-
-    // ──────────────────────────────────────────────────────────────
-    // UTIL
-    // ──────────────────────────────────────────────────────────────
-    function isValidEmail(e) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-    }
-
-    // Initialise
-    setStep(1);
-    updateUI();
-});
-ENDJS;
-
-    wp_add_inline_script('bootstrap-js', $script);
-}
-add_action('wp_enqueue_scripts', 'add_registration_script_for_organization');
+add_shortcode('nsa_registration_form', 'nsa_registration_form_shortcode');
