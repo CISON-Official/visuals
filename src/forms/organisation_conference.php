@@ -580,7 +580,7 @@ function nsa_registration_form_shortcode() {
                         <small class="nsa-help-text">Enter 8-digit CISON member ID</small>
                     </div>
                 </div>
-            </div>
+            </div>  
         </div>
     </template>
 
@@ -599,7 +599,7 @@ function nsa_registration_form_shortcode() {
             align-items: center;
             margin-bottom: 40px;
             padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #c2ebc0 0%, #52a24b 100%);
             border-radius: 12px;
             color: white;
         }
@@ -634,11 +634,11 @@ function nsa_registration_form_shortcode() {
         
         .nsa-step.active .nsa-step-number {
             background: white;
-            color: #667eea;
+            color: #06f71a;
         }
         
         .nsa-step.completed .nsa-step-number {
-            background: #4caf50;
+            background: #014403;
             color: white;
         }
         
@@ -716,7 +716,7 @@ function nsa_registration_form_shortcode() {
         
         .nsa-input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: #66ea78;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
@@ -760,7 +760,7 @@ function nsa_registration_form_shortcode() {
             margin-top: 20px;
             padding: 15px;
             background: #e8f0fe;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #66ea6d;
             border-radius: 6px;
             font-size: 0.875rem;
         }
@@ -847,7 +847,7 @@ function nsa_registration_form_shortcode() {
         }
         
         .nsa-btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #75ea66 0%, #59a24b 100%);
             color: white;
         }
         
@@ -913,7 +913,7 @@ function nsa_registration_form_shortcode() {
             background: #e8f0fe;
             border-radius: 6px;
             font-size: 0.875rem;
-            color: #1e3a8a;
+            color: #228a1e;
         }
         
         /* Modal */
