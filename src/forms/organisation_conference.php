@@ -326,7 +326,7 @@ function nsa_registration_form_shortcode() {
     ?>
     <div class="nsa-registration-container" id="nsaRegistrationApp">
         <!-- Step Indicator -->
-        <div class="nsa-steps">
+        <!-- <div class="nsa-steps">
             <div class="nsa-step active" data-step="1">
                 <div class="nsa-step-number">1</div>
                 <div class="nsa-step-label">Registration Options</div>
@@ -346,7 +346,7 @@ function nsa_registration_form_shortcode() {
                 <div class="nsa-step-number">4</div>
                 <div class="nsa-step-label">Payment</div>
             </div>
-        </div>
+        </div> -->
 
         <!-- Step 1: Global Registration Options -->
         <div id="nsa-step-1" class="nsa-step-content">
