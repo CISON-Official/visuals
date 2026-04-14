@@ -19,8 +19,8 @@ function add_certificate_to_profile_tag()
 
 function view_certificates_screen()
 {
-    error_log("Trying to run this");
     add_action('bp_template_content', 'certificates_links_content');
+    error_log("Trying to run this");
     bp_core_load_template('members/single/plugins');
 }
 
