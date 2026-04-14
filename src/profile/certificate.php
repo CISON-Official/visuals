@@ -10,7 +10,7 @@ function add_certificate_to_profile_tag()
     bp_core_new_nav_item([
         'name' => __('Certificates', 'textdomain'),
         'slug' => 'certificates',
-        'position' => 20,
+        'position' => 70,
         'screen_function' => 'view_certificates_screen',
         'default_subnav_slug' => 'certificates-section',
         'item_css_id' => 'certificates_section_style'
@@ -19,6 +19,7 @@ function add_certificate_to_profile_tag()
 
 function view_certificates_screen()
 {
+    error_log("Trying to run this");
     add_action('bp_template_content', 'certificates_links_content');
     bp_core_load_template('members/single/plugins');
 }
@@ -50,7 +51,6 @@ function bbc_get_user_certificates(int $user_id): array
  */
 function certificates_links_content()
 {
-    error_log("Trying to run this");
     echo list_certificates_content_template();
 }
 
