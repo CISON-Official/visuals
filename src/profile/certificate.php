@@ -58,6 +58,9 @@ function certificates_links_content()
  */
 function list_certificates_content_template(): string
 {
+
+    error_log("Trying to run this");
+    
     $displayed_user_id = bp_displayed_user_id();
 
     if (!$displayed_user_id) {
