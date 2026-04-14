@@ -24,7 +24,7 @@ function view_certificates_screen()
     add_action('bp_template_content', 'certificates_links_content');
 
     // This loads the standard profile wrapper
-    bp_core_load_template(apply_filters('bp_core_template_plugin', 'members/single/plugins'));
+    bp_core_load_template('members/single/plugins');
 }
 
 function bbc_get_user_certificates(int $user_id): array
@@ -47,6 +47,11 @@ function bbc_get_user_certificates(int $user_id): array
 }
 
 function certificates_links_content()
+{   
+    echo list_certificates_content_template();
+}
+
+function list_certificates_content_template(): string
 {
     $displayed_user_id = bp_displayed_user_id();
     if (!$displayed_user_id)
@@ -55,13 +60,8 @@ function certificates_links_content()
     $certificates = bbc_get_user_certificates($displayed_user_id);
     $count = count($certificates);
 
-    echo list_certificates_content_template($certificates, $count);
-}
-
-function list_certificates_content_template(array $certificates, int $count): string
-{
     ob_start();
-
+    ?>
     if ($count === 0 || empty($certificates)): ?>
         <div class="bbc-empty-state">
             <span class="bbc-empty-icon">🎓</span>
@@ -124,6 +124,6 @@ function list_certificates_content_template(array $certificates, int $count): st
             <?php endforeach; ?>
         </ul>
     <?php endif;
-
+    <?php
     return ob_get_clean();
 }
