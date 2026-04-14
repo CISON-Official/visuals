@@ -3,7 +3,7 @@
  * Certificates Profile Tab (BuddyPress / BuddyBoss)
  */
 
-add_action('bp_setup_nav', 'add_certificate_to_profile_tag', 100);
+add_action('bp_setup_nav', 'add_certificate_to_profile_tag', 20);
 
 function add_certificate_to_profile_tag()
 {
@@ -12,7 +12,7 @@ function add_certificate_to_profile_tag()
         'slug' => 'certificates',
         'position' => 60,
         'screen_function' => 'view_certificates_screen',
-        'default_subnav_slug' => 'certificates-section',
+        'default_subnav_slug' => 'certificates',
         'item_css_id' => 'certificates_section_style'
     ]);
 }
