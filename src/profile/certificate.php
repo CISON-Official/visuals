@@ -21,7 +21,7 @@ function view_certificates_screen()
 {
     add_action('bp_template_content', 'certificates_links_content');
     error_log("Trying to run this");
-    bp_core_load_template('members/single/plugins');
+    bp_core_load_template('members/single/profile');
 }
 
 /**
