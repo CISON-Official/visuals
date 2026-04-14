@@ -183,6 +183,30 @@ function alter_examination_registration_table()
     }
 }
 
+function bbc_create_certificates_table()
+{
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'user_certificates';
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE IF NOT EXISTS {$table_name} (
+        id            BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id       BIGINT(20) UNSIGNED NOT NULL,
+        name          VARCHAR(255)        NOT NULL,
+        description   TEXT                          DEFAULT NULL,
+        certificate_path VARCHAR(500)     NOT NULL,
+        created       BIGINT(20)          NOT NULL,
+        secret_token  VARCHAR(16)         NOT NULL,
+        expire_date   BIGINT(20)          NOT NULL,
+        PRIMARY KEY  (id),
+        KEY user_id  (user_id)
+    ) {$charset_collate};";
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta($sql);
+}
+
 function create_databases()
 {
     global $wpdb;
@@ -191,4 +215,5 @@ function create_databases()
     alter_nsa_registration_table();
     create_examination_registration_table();
     alter_examination_registration_table();
+    bbc_create_certificates_table();
 }

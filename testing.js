@@ -1,123 +1,324 @@
 jQuery(document).ready(function ($) {
-    // UPDATE THESE PRODUCT IDs FROM YOUR WOOCCOMMERCE PRODUCTS
-    var conference_id = 6623;
-    var workshop_id = 6647;
-    var virtual_id = 6625;
-    var workshop_conference_id = 12670;
-    var workshop_virtual_id = 12672;
 
 
-    // Auto-add to cart when selection changes
-    $('#registering_for').on('change', function () {
+    /* product IDs */
 
-        $.post(ajax_object.ajax_url, {
-            action: 'clear_cart',
-            nonce: ajax_object.nonce
-        });
+    var PRODUCTS = {
 
-        var selection = $(this).val();
-        $('.cart-status').text('Adding to cart...');
-        $('#pay-submit').prop('disabled', true);
+        workshop: 12816,
+        conference: 12817,
+        virtual: 12818,
+        workshop_conference: 12670,
+        workshop_virtual: 12672
 
-        if (selection === 'conference') {
-            addToCart(conference_id);
-        } else if (selection === 'workshop') {
-            addToCart(workshop_id);
-        } else if (selection === 'both') {
-            addToCart(workshop_conference_id);
-        } else if (selection === 'virtual') {
-            addToCart(virtual_id);
-        } else if (selection === 'virtual_both') {
-            addToCart(workshop_virtual_id);
-        } else {
-            $('.cart-status').text('Please select registration option');
-            $('#pay-submit').prop('disabled', true);
-        }
-    });
+    };
 
-    function addToCart(product_id) {
-        console.log('Adding to cart: ' + product_id);
 
-        var postData = {
-            action: 'add_to_cart_dynamic',
-            product_id: product_id
-        };
+    /* prices */
 
-        if (ajax_object.nonce && ajax_object.user_logged_in !== false) {
-            postData.nonce = ajax_object.nonce;
-        }
-        $.post(ajax_object.ajax_url, postData, function (response) {
-            if (response.success) {
-                $('.cart-status').html('✅ Item added! Ready to pay');
-                $('#pay-submit').prop('disabled', false);
-            } else {
-                $('.cart-status').html('❌ Error: ' + (response.data || 'Try again'));
-                $('#pay-submit').prop('disabled', true);
-            }
-            console.log('Response:', response);
-            if (ajax_object.user_logged_in) {
-                console.log('User is logged in');
-            } else {
-                console.log('User is not logged in')
-            }
-        }).fail(function (xhr, status, error) {
-            console.error('AJAX Error:', error);
-            $('.cart-status').html('❌ Network error - try again');
-            $('#pay-submit').prop('disabled', true);
-            console.log('AJAX Error:', error, xhr, status);
-        });
+    var PRICES = {
+
+        12816: 50000,
+        12817: 120000,
+        12818: 40000,
+        12670: 150000,
+        12672: 70000
+
+    };
+
+
+    var uid = 0;
+
+
+    /* steps */
+
+    function setStep(n) {
+
+        $('#nsa-step-1,#nsa-step-2,#nsa-step-3').hide();
+
+        $('#nsa-step-' + n).show();
+
     }
 
 
-    // Form submit → Open checkout modal
-    let valid = true;
-    $(this).find('[required]').each(function () {
-        if (!$(this).val().trim()) {
-            $(this).addClass('is-invalid');
-            valid = false;
-        } else {
-            $(this).removeClass('is-invalid');
-        }
-    });
+    /* selection */
 
-    if (!valid || $('#pay-submit').prop('disabled')) {
-        alert('Please complete all required fields and select registration.');
-        return;
+    function getSelection() {
+
+        return {
+
+            workshop: $('#org_workshop').is(':checked'),
+
+            conference: $('#org_conference').is(':checked'),
+
+            virtual: $('#org_virtual').is(':checked')
+
+        }
+
     }
-    $.post(ajax_object.ajax_url, $(this).serialize() + '&action=save_nsa_registration_on_payment_success', function (response) {
-        if (response.success) {
-            // Redirect to checkout with registration ID
-            console.log('Data saved: ', response);
-        } else {
-            alert('Save error: ' + response.data);
-        }
-    });
-    // Load checkout
-    $.post(ajax_object.ajax_url, {
-        action: 'load_wc_checkout',
-        nonce: ajax_object.nonce
-    }, function (response) {
-        if (response.success) {
-            $('#checkout-container').html(response.data.html);
-            $('#checkoutModal').modal('show');
 
-            // Re-init WooCommerce checkout
-            $(document.body).trigger('update_checkout');
-            $(document.body).trigger('wc_fragment_refresh');
-        } else {
-            alert('Error: ' + response.data);
-        }
+
+    /* product resolver */
+
+    function getProductId(s) {
+
+        if (s.workshop && s.conference)
+
+            return PRODUCTS.workshop_conference;
+
+        if (s.workshop && s.virtual)
+
+            return PRODUCTS.workshop_virtual;
+
+        if (s.workshop)
+
+            return PRODUCTS.workshop;
+
+        if (s.conference)
+
+            return PRODUCTS.conference;
+
+        if (s.virtual)
+
+            return PRODUCTS.virtual;
+
+        return null;
+
+    }
+
+
+    /* mutual exclusion */
+
+    $('.org-conference-opt').change(function () {
+
+        if ($(this).is(':checked'))
+
+            $('.org-conference-opt').not(this).prop('checked', false);
+
+        validateProduct();
+
+        updatePrice();
+
     });
 
-    // After payment modal closes, submit form
-    $('#checkoutModal').on('hidden.bs.modal', function () {
-        if (window.paymentCompleted) {
-            $('#registration-form')[0].submit();
-        }
+
+    $('.org-reg-check').change(function () {
+
+        validateProduct();
+
+        updatePrice();
+
     });
 
-    // Detect payment success (WooCommerce event)
-    $(document.body).on('order_received updated_wc_div', function () {
-        window.paymentCompleted = true;
+
+    function validateProduct() {
+
+        var s = getSelection();
+
+        if (!s.workshop && !s.conference && !s.virtual) {
+
+            $('.org-reg-error').text('Select product').show();
+
+            $('#btn-add-attendee').prop('disabled', true);
+
+            return false;
+
+        }
+
+        if (s.conference && s.virtual) {
+
+            $('.org-reg-error').text('Choose onsite OR virtual');
+
+            $('#btn-add-attendee').prop('disabled', true);
+
+            return false;
+
+        }
+
+        $('.org-reg-error').hide();
+
+        $('#btn-add-attendee').prop('disabled', false);
+
+        return true;
+
+    }
+
+
+    /* price preview */
+
+    function updatePrice() {
+
+        var s = getSelection();
+
+        var pid = getProductId(s);
+
+        var qty = $('.nsa-attendee-card').length;
+
+        if (!pid) {
+
+            $('#price-preview').text('Select product');
+
+            return;
+
+        }
+
+        var price = PRICES[pid];
+
+        var total = price * qty;
+
+        $('#price-preview').text(
+
+            '₦' + price.toLocaleString() +
+
+            ' x ' + qty +
+
+            ' = ₦' + total.toLocaleString()
+
+        );
+
+    }
+
+
+    /* add attendee */
+
+    $('#btn-add-attendee').click(function () {
+
+        if (!validateProduct())
+
+            return;
+
+        uid++;
+
+        var tpl = document.getElementById('attendee-card-tpl');
+
+        var frag = document.importNode(tpl.content, true);
+
+        var div = document.createElement('div');
+
+        div.appendChild(frag);
+
+        var html = div.innerHTML;
+
+        html = html.replace('data-attendee-id=""', 'data-attendee-id="' + uid + '"');
+
+        var card = $(html);
+
+        card.find('.att-num').text(uid);
+
+        card.find('input[type=radio]').attr('name', 'member_' + uid);
+
+        $('#attendee-list').append(card);
+
+        bindEvents(card);
+
+        updateUI();
+
+        updatePrice();
+
     });
+
+
+    function bindEvents(card) {
+
+        card.find('.btn-remove-attendee').click(function () {
+
+            card.remove();
+
+            updateUI();
+
+            updatePrice();
+
+        });
+
+    }
+
+
+    /* UI updates */
+
+    function updateUI() {
+
+        var count = $('.nsa-attendee-card').length;
+
+        $('#attendee-empty').toggle(count === 0);
+
+        $('#btn-to-checkout').prop('disabled', count === 0);
+
+    }
+
+
+    /* checkout */
+
+    $('#btn-to-checkout').click(function () {
+
+        var count = $('.nsa-attendee-card').length;
+
+        var s = getSelection();
+
+        var pid = getProductId(s);
+
+        $.post(
+
+            ajax_object.ajax_url,
+
+            {
+
+                action: 'add_to_cart_dynamic',
+
+                product_id: pid,
+
+                quantity: count,
+
+                nonce: ajax_object.nonce
+
+            },
+
+            function () {
+
+                $.post(
+
+                    ajax_object.ajax_url,
+
+                    {
+
+                        action: 'load_wc_checkout',
+
+                        nonce: ajax_object.nonce
+
+                    },
+
+                    function (resp) {
+
+                        $('#checkout-container').html(resp.data.html);
+
+                        $('#checkout-summary-label').text(
+
+                            count + ' attendee(s)'
+
+                        );
+
+                        setStep(3);
+
+                    }
+
+                );
+
+            }
+
+        );
+
+    });
+
+
+    /* navigation */
+
+    $('#btn-back-to-2').click(function () {
+
+        setStep(2);
+
+    });
+
+
+    setStep(1);
+
+
 });
