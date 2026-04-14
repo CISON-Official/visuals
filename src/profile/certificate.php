@@ -10,7 +10,7 @@ function add_certificate_to_profile_tag()
     bp_core_new_nav_item([
         'name' => __('Certificates', 'textdomain'),
         'slug' => 'certificates',
-        'position' => 70,
+        'position' => 60,
         'screen_function' => 'view_certificates_screen',
         'default_subnav_slug' => 'certificates-section',
         'item_css_id' => 'certificates_section_style'
