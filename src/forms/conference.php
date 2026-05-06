@@ -128,25 +128,25 @@ function ajax_save_registration()
 
     // registering_for arrives as a comma-joined string from JS
     $data = array(
-        'member_id'       => sanitize_text_field($_POST['member_id'] ?? ''),
+        'member_id' => sanitize_text_field($_POST['member_id'] ?? ''),
         'registering_for' => sanitize_text_field($_POST['registering_for'] ?? ''),
-        'title'           => sanitize_text_field($_POST['title'] ?? ''),
-        'first_name'      => sanitize_text_field($_POST['first_name'] ?? ''),
-        'middle_name'     => sanitize_text_field($_POST['middle_name'] ?? ''),
-        'last_name'       => sanitize_text_field($_POST['last_name'] ?? ''),
-        'email'           => sanitize_email($_POST['email'] ?? ''),
-        'phone'           => sanitize_text_field($_POST['phone'] ?? ''),
-        'occupation'      => sanitize_text_field($_POST['occupation'] ?? ''),
-        'organisation'    => sanitize_text_field($_POST['organisation'] ?? ''),
-        'street'          => sanitize_text_field($_POST['street'] ?? ''),
-        'city'            => sanitize_text_field($_POST['city'] ?? ''),
-        'state'           => sanitize_text_field($_POST['state'] ?? ''),
-        'postcode'        => sanitize_text_field($_POST['postcode'] ?? ''),
-        'country'         => sanitize_text_field($_POST['country'] ?? 'NG'),
-        'gender'          => sanitize_text_field($_POST['gender'] ?? ''),
-        'hear_about'      => sanitize_text_field($_POST['hear_about'] ?? ''),
-        'payment_status'  => 'pending',
-        'ip_address'      => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+        'title' => sanitize_text_field($_POST['title'] ?? ''),
+        'first_name' => sanitize_text_field($_POST['first_name'] ?? ''),
+        'middle_name' => sanitize_text_field($_POST['middle_name'] ?? ''),
+        'last_name' => sanitize_text_field($_POST['last_name'] ?? ''),
+        'email' => sanitize_email($_POST['email'] ?? ''),
+        'phone' => sanitize_text_field($_POST['phone'] ?? ''),
+        'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
+        'organisation' => sanitize_text_field($_POST['organisation'] ?? ''),
+        'street' => sanitize_text_field($_POST['street'] ?? ''),
+        'city' => sanitize_text_field($_POST['city'] ?? ''),
+        'state' => sanitize_text_field($_POST['state'] ?? ''),
+        'postcode' => sanitize_text_field($_POST['postcode'] ?? ''),
+        'country' => sanitize_text_field($_POST['country'] ?? 'NG'),
+        'gender' => sanitize_text_field($_POST['gender'] ?? ''),
+        'hear_about' => sanitize_text_field($_POST['hear_about'] ?? ''),
+        'payment_status' => 'pending',
+        'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
     );
 
     $required = ['registering_for', 'title', 'first_name', 'last_name', 'email', 'phone', 'street', 'city', 'state', 'country', 'gender'];
@@ -167,7 +167,7 @@ function ajax_save_registration()
     if ($result !== false) {
         wp_send_json_success(array(
             'registration_id' => $wpdb->insert_id,
-            'message'         => 'Registration saved successfully',
+            'message' => 'Registration saved successfully',
         ));
     } else {
         wp_send_json_error('Database error: ' . $wpdb->last_error);
@@ -184,7 +184,8 @@ add_action('wp_ajax_nopriv_save_registration', 'ajax_save_registration');
 function link_registration_to_order($order_id)
 {
     $registration_id = WC()->session ? WC()->session->get('nsa_registration_id') : 0;
-    if (!$registration_id) return;
+    if (!$registration_id)
+        return;
 
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
@@ -278,10 +279,14 @@ function registration_form_with_checkout_shortcode()
             <div class="mb-4">
                 <h6>Address <span class="text-danger">*</span></h6>
                 <div class="row">
-                    <div class="col-md-12 mb-2"><input type="text" class="form-control" name="street" placeholder="Street Address" required></div>
-                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="city" placeholder="City/Town" required></div>
-                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="state" placeholder="State" required></div>
-                    <div class="col-md-2 mb-2"><input type="text" class="form-control" name="postcode" placeholder="Postcode"></div>
+                    <div class="col-md-12 mb-2"><input type="text" class="form-control" name="street"
+                            placeholder="Street Address" required></div>
+                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="city" placeholder="City/Town"
+                            required></div>
+                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="state" placeholder="State"
+                            required></div>
+                    <div class="col-md-2 mb-2"><input type="text" class="form-control" name="postcode"
+                            placeholder="Postcode"></div>
                     <div class="col-md-2 mb-2">
                         <select class="form-select" name="country" required>
                             <option value="">Country</option>
@@ -323,7 +328,8 @@ function registration_form_with_checkout_shortcode()
                 <h5>CISON ID <span class="text-danger">*</span></h5>
                 <div class="row">
                     <div class="col-md-8">
-                        <input type="text" class="form-control" name="member_id" pattern="[0-9]{8}" title="Enter valid CISON ID (8 digits)">
+                        <input type="text" class="form-control" name="member_id" pattern="[0-9]{8}"
+                            title="Enter valid CISON ID (8 digits)">
                     </div>
                 </div>
             </div>
@@ -337,9 +343,8 @@ function registration_form_with_checkout_shortcode()
 
                 <!-- Pre-conference workshop -->
                 <div class="form-check">
-                    <input class="" type="checkbox"
-                           name="registering_for[]" value="workshop"
-                           id="chk_workshop" onchange="handleRegistrationChange()">
+                    <input class="" type="checkbox" name="registering_for[]" value="workshop" id="chk_workshop"
+                        onchange="handleRegistrationChange()">
                     <label class="form-check-label" for="chk_workshop">
                         Pre-Conference Workshop only
                     </label>
@@ -347,9 +352,8 @@ function registration_form_with_checkout_shortcode()
 
                 <!-- On-site conference -->
                 <div class="form-check">
-                    <input class="" type="checkbox"
-                           name="registering_for[]" value="conference"
-                           id="chk_conference" onchange="handleRegistrationChange()">
+                    <input class="" type="checkbox" name="registering_for[]" value="conference" id="chk_conference"
+                        onchange="handleRegistrationChange()">
                     <label class="form-check-label" for="chk_conference">
                         3rd Annual Conference only (On-Site) (Early Bird)
                     </label>
@@ -357,9 +361,8 @@ function registration_form_with_checkout_shortcode()
 
                 <!-- Virtual conference -->
                 <div class="form-check">
-                    <input class="" type="checkbox"
-                           name="registering_for[]" value="virtual"
-                           id="chk_virtual" onchange="handleRegistrationChange()">
+                    <input class="" type="checkbox" name="registering_for[]" value="virtual" id="chk_virtual"
+                        onchange="handleRegistrationChange()">
                     <label class="form-check-label" for="chk_virtual">
                         3rd Annual Conference only (Virtual) (Early Bird)
                     </label>
@@ -404,10 +407,24 @@ function registration_form_with_checkout_shortcode()
     </div>
 
     <style>
-        .registration-container { max-width: 900px; margin: 0 auto; padding: 20px; }
-        .text-danger { color: #dc3545 !important; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        #checkout-container .woocommerce { padding: 20px; }
+        .registration-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .text-danger {
+            color: #dc3545 !important;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #checkout-container .woocommerce {
+            padding: 20px;
+        }
     </style>
 
     <script>
@@ -425,8 +442,8 @@ function registration_form_with_checkout_shortcode()
         //     in the way of either — it is always freely toggleable
         function handleRegistrationChange() {
             var chkConference = document.getElementById('chk_conference');
-            var chkVirtual    = document.getElementById('chk_virtual');
-            var errDiv        = document.getElementById('registration-error');
+            var chkVirtual = document.getElementById('chk_virtual');
+            var errDiv = document.getElementById('registration-error');
 
             // If the user just checked on-site, uncheck virtual (and vice-versa)
             if (chkConference.checked && chkVirtual.checked) {
@@ -446,19 +463,19 @@ function registration_form_with_checkout_shortcode()
             }
 
             errDiv.style.display = 'none';
-            errDiv.textContent   = '';
+            errDiv.textContent = '';
 
             // Trigger cart update
             updateCartFromCheckboxes();
         }
 
         // Track which conference checkbox was most recently clicked
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('chk_conference').addEventListener('change', function() {
+        document.addEventListener('DOMContentLoaded', function () {
+            document.getElementById('chk_conference').addEventListener('change', function () {
                 this.dataset.last = this.checked ? 'true' : 'false';
                 document.getElementById('chk_virtual').dataset.last = 'false';
             });
-            document.getElementById('chk_virtual').addEventListener('change', function() {
+            document.getElementById('chk_virtual').addEventListener('change', function () {
                 this.dataset.last = this.checked ? 'true' : 'false';
                 document.getElementById('chk_conference').dataset.last = 'false';
             });
@@ -634,3 +651,343 @@ JS;
     wp_add_inline_script('bootstrap-js', $script);
 }
 add_action('wp_enqueue_scripts', 'add_registration_script');
+
+
+function rb_registration_buttons_shortcode($atts)
+{
+
+    $atts = shortcode_atts(
+        array(
+            'member_url' => '#',
+            'non_member_url' => '#',
+            'member_label' => 'Register as Member',
+            'non_member_label' => 'Register as Non-Member',
+        ),
+        $atts,
+        'registration_buttons'
+    );
+
+    $member_url = esc_url($atts['member_url']);
+    $non_member_url = esc_url($atts['non_member_url']);
+    $member_label = esc_html($atts['member_label']);
+    $non_member_label = esc_html($atts['non_member_label']);
+
+    ob_start();
+    ?>
+
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap');
+
+.page-root {
+    min-height: 100vh;
+    background: #f4fff6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+    font-family: 'DM Sans', sans-serif;
+    position: relative;
+    overflow: hidden;
+}
+
+.page-root::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 60% 40% at 15% 10%, rgba(34, 197, 94, 0.15) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 85% 90%, rgba(34, 197, 94, 0.15) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.page-root::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(34, 197, 94, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 197, 94, 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+}
+
+.eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #22c55e;
+}
+
+.page-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 700;
+    color: #065f46;
+}
+
+.page-subtitle {
+    color: #166534;
+}
+
+.card--member {
+    background: #ffffff;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.08), 0 24px 48px rgba(34, 197, 94, 0.1);
+}
+
+.card--member:hover {
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.4), 0 32px 64px rgba(34, 197, 94, 0.2);
+}
+
+.card--nonmember {
+    background: #f9fffa;
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.05), 0 24px 48px rgba(34, 197, 94, 0.08);
+}
+
+.card--nonmember:hover {
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.3), 0 32px 64px rgba(34, 197, 94, 0.15);
+}
+
+.card--member .card-top-bar {
+    background: #22c55e;
+}
+
+.card--nonmember .card-top-bar {
+    background: #86efac;
+}
+
+.card--member .card-type,
+.card--nonmember .card-type {
+    color: #22c55e;
+}
+
+.card-title {
+    color: #065f46;
+}
+
+.card--member .card-pill,
+.card--nonmember .card-pill {
+    background: rgba(34, 197, 94, 0.1);
+    color: #166534;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.card--member .card-divider,
+.card--nonmember .card-divider {
+    background: rgba(34, 197, 94, 0.2);
+}
+
+.card--member .perk-item.active .perk-label,
+.card--nonmember .perk-item .perk-label {
+    color: #065f46;
+}
+
+.card--member .perk-item.active .perk-desc,
+.card--nonmember .perk-item .perk-desc {
+    color: #166534;
+}
+
+.perk-icon-wrap.active {
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.perk-icon-wrap.inactive {
+    background: rgba(34, 197, 94, 0.05);
+    border: 1px solid rgba(34, 197, 94, 0.1);
+}
+
+.card--member .early-bird-box,
+.card--nonmember .early-bird-box {
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.card--member .eb-strong,
+.card--nonmember .eb-strong {
+    color: #16a34a;
+}
+
+.card--member .eb-desc,
+.card--nonmember .eb-desc {
+    color: #166534;
+}
+
+.card--member .reg-btn {
+    background: #22c55e;
+    color: #ffffff;
+}
+
+.card--member .reg-btn:hover {
+    background: #16a34a;
+}
+
+.card--nonmember .reg-btn {
+    background: transparent;
+    color: #16a34a;
+    border: 1px solid rgba(34, 197, 94, 0.5);
+}
+
+.card--nonmember .reg-btn:hover {
+    background: rgba(34, 197, 94, 0.15);
+    color: #15803d;
+}
+
+.note {
+    color: #166534;
+}
+</style>
+
+    <div class="page-root">
+
+        <p class="eyebrow">Registration</p>
+        <h1 class="page-title">Choose Your Path</h1>
+        <p class="page-subtitle">Select the registration type that best reflects your status and the benefits you wish to
+            receive.</p>
+
+        <div class="cards-row">
+
+            <!-- MEMBER CARD -->
+            <div class="card card--member">
+                <div class="card-top-bar"></div>
+                <div class="card-header">
+                    <div>
+                        <p class="card-type">Full Access</p>
+                        <h2 class="card-title">Register as<br>a Member</h2>
+                    </div>
+                    <span class="card-pill">Member</span>
+                </div>
+                <hr class="card-divider">
+                <ul class="card-perks">
+                    <li class="perk-item active">
+                        <div class="perk-icon-wrap active">
+                            <svg class="perk-icon" viewBox="0 0 14 14" fill="none">
+                                <path d="M7 1l1.5 3.2 3.5.5-2.5 2.5.6 3.5L7 9l-3.1 1.7.6-3.5L2 4.7l3.5-.5L7 1z"
+                                    fill="#4ec46a" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="perk-label">Induction Eligibility</p>
+                            <p class="perk-desc">Be formally inducted and recognised as an official member of the
+                                organisation.</p>
+                        </div>
+                    </li>
+                    <li class="perk-item active">
+                        <div class="perk-icon-wrap active">
+                            <svg class="perk-icon" viewBox="0 0 14 14" fill="none">
+                                <rect x="1" y="2" width="12" height="10" rx="1" stroke="#4ec46a" stroke-width="1.2"
+                                    fill="none" />
+                                <path d="M4 6h6M4 8.5h4" stroke="#4ec46a" stroke-width="1.2" stroke-linecap="round" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="perk-label">Official Certificate</p>
+                            <p class="perk-desc">Receive a recognised certificate of membership upon successful completion.
+                            </p>
+                        </div>
+                    </li>
+                    <li class="perk-item active">
+                        <div class="perk-icon-wrap active">
+                            <svg class="perk-icon" viewBox="0 0 14 14" fill="none">
+                                <circle cx="7" cy="7" r="5.5" stroke="#4ec46a" stroke-width="1.2" fill="none" />
+                                <path d="M4.5 7l2 2 3-3" stroke="#4ec46a" stroke-width="1.2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="perk-label">Implement &amp; Use Access</p>
+                            <p class="perk-desc">Full rights to implement and utilise all member resources and privileges.
+                            </p>
+                        </div>
+                    </li>
+                </ul>
+                <div class="early-bird-box">
+                    <svg class="eb-icon" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6.5" stroke="#4ec46a" stroke-width="1.2" fill="none" />
+                        <path d="M8 5v3.5l2 2" stroke="#4ec46a" stroke-width="1.2" stroke-linecap="round" />
+                    </svg>
+                    <div>
+                        <span class="eb-strong">25% Early Bird Discount</span>
+                        <span class="eb-desc">Exclusively for members — lock in your savings by registering before the
+                            deadline.</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="#" class="reg-btn">Register as Member &rarr;</a>
+                </div>
+            </div>
+
+            <!-- NON-MEMBER CARD -->
+            <div class="card card--nonmember">
+                <div class="card-top-bar"></div>
+                <div class="card-header">
+                    <div>
+                        <p class="card-type">Standard Access</p>
+                        <h2 class="card-title">Register as<br>Non-Member</h2>
+                    </div>
+                    <span class="card-pill">Non-Member</span>
+                </div>
+                <hr class="card-divider">
+                <ul class="card-perks">
+                    <li class="perk-item inactive">
+                        <div class="perk-icon-wrap inactive">
+                            <svg class="perk-icon" viewBox="0 0 14 14" fill="none">
+                                <path d="M4 4l6 6M10 4l-6 6" stroke="#1a3020" stroke-width="1.4" stroke-linecap="round" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="perk-label">Induction Eligibility</p>
+                            <p class="perk-desc">Not eligible for formal induction into the organisation.</p>
+                        </div>
+                    </li>
+                    <li class="perk-item inactive">
+                        <div class="perk-icon-wrap inactive">
+                            <svg class="perk-icon" viewBox="0 0 14 14" fill="none">
+                                <path d="M4 4l6 6M10 4l-6 6" stroke="#1a3020" stroke-width="1.4" stroke-linecap="round" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="perk-label">Official Certificate</p>
+                            <p class="perk-desc">Certificate is not included with non-member registration.</p>
+                        </div>
+                    </li>
+                    <li class="perk-item inactive">
+                        <div class="perk-icon-wrap inactive">
+                            <svg class="perk-icon" viewBox="0 0 14 14" fill="none">
+                                <path d="M4 4l6 6M10 4l-6 6" stroke="#1a3020" stroke-width="1.4" stroke-linecap="round" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="perk-label">Implement &amp; Use Access</p>
+                            <p class="perk-desc">Member resources and privileges are not available to non-members.</p>
+                        </div>
+                    </li>
+                </ul>
+                <div class="early-bird-box">
+                    <svg class="eb-icon" viewBox="0 0 16 16" fill="none">
+                        <rect x="3" y="7" width="10" height="7" rx="1" stroke="#1a3020" stroke-width="1.2" fill="none" />
+                        <path d="M5 7V5a3 3 0 016 0v2" stroke="#1a3020" stroke-width="1.2" stroke-linecap="round" />
+                    </svg>
+                    <div>
+                        <span class="eb-strong">Early Bird Discount not available</span>
+                        <span class="eb-desc">This option does not qualify for the 25% early bird rate.</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="#" class="reg-btn">Register as Non-Member &rarr;</a>
+                </div>
+            </div>
+
+        </div>
+
+        <p class="note">Membership status is verified at the time of registration &nbsp;·&nbsp; For enquiries, contact your
+            event coordinator</p>
+
+    </div>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('registration_buttons', 'rb_registration_buttons_shortcode');
