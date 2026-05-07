@@ -10,6 +10,7 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
+	'/corporate-prs-2nd-quarter-registration/',
         '/examination-submissions/',
         '/checkout/',
         '/checkout/order-received/',
