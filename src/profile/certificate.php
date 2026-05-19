@@ -9,7 +9,7 @@ function add_certificate_to_profile_tag()
 {
     bp_core_new_nav_item([
         'name' => __('Certificates', 'textdomain'),
-        'slug' => 'certificates',
+        'slug' => 'profile/certificates',
         'position' => 55,
         'screen_function' => 'view_certificates_screen',
         'default_subnav_slug' => 'certificates',
@@ -31,7 +31,7 @@ function bbc_get_user_certificates(int $user_id): array
 {
     global $wpdb;
 
-    $table = $wpdb->prefix . 'user_certificates';
+    $table = $wpdb->prefix . 'certificate_registry';
 
     // Check table exists
     if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table)) !== $table) {

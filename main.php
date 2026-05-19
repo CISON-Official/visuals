@@ -46,7 +46,7 @@ require_once VISUALS_PATH . 'src/PRS/remaining.php';
 
 // 5. Profile & Security Modules
 require_once VISUALS_PATH . 'src/profile/email.php';
-require_once VISUALS_PATH . 'src/profile/certificate.php';
+// require_once VISUALS_PATH . 'src/profile/certificate.php';
 require_once VISUALS_PATH . 'src/profile/secure.php';
 require_once VISUALS_PATH . 'src/profile/conference.php';
 
