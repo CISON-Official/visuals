@@ -68,3 +68,6 @@ require_once VISUALS_PATH . 'src/corporate/signuppage.php';
 require_once VISUALS_PATH . 'src/corporate/nav.php';
 require_once VISUALS_PATH . 'src/corporate/default_member_dir.php';
 
+add_action('plugins_loaded', function () {
+   new DisplayPRSDetails(); 
+});
