@@ -18,6 +18,7 @@ define('VISUALS_URL', plugin_dir_url(__FILE__));
 // 2. Database & Schema Initialization
 // Note: We include the file first so the function is available for the hook
 require_once VISUALS_PATH . 'src/database.php';
+require_once VISUALS_PATH . 'src/PRS/display.php';
 
 /**
  * Ensures the database table is created or updated.
@@ -28,6 +29,7 @@ function visuals_init_database()
     if (function_exists('create_databases')) {
         create_databases();
     }
+    new DisplayPRSDetails();
 }
 
 // Register activation hook
@@ -65,3 +67,4 @@ require_once VISUALS_PATH . 'src/menu.php';
 require_once VISUALS_PATH . 'src/corporate/signuppage.php';
 require_once VISUALS_PATH . 'src/corporate/nav.php';
 require_once VISUALS_PATH . 'src/corporate/default_member_dir.php';
+
