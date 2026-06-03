@@ -31,19 +31,21 @@ function display_gravity_form_entries_shortcode($atts)
             <thead>
                 <tr style="background-color: #f2f2f2;">
                     <th style="padding: 8px;">Entry ID</th>
+                    <th style="padding: 8px;">First Name</th>
+                    <th style="padding: 8px;">LastName</th>
                     <th style="padding: 8px;">Date Submitted</th>
-                    <th style="padding: 8px;">Field 1 Data</th>
-                    <th style="padding: 8px;">Field 2 Data</th>
+                    <th style="padding: 8px;">Payment Status</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($entries as $entry): ?>
                     <tr>
                         <td style="padding: 8px;"><?php echo esc_html($entry['id']); ?></td>
-                        <td style="padding: 8px;"><?php echo esc_html($entry['date_created']); ?></td>
                         <!-- Replace '1' and '2' with your actual Gravity Forms Field IDs -->
                         <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '1')); ?></td>
                         <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '2')); ?></td>
+                        <td style="padding: 8px;"><?php echo esc_html($entry['date_created']); ?></td>
+                        <td style="padding: 8px;">Pending</td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

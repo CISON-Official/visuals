@@ -29,7 +29,7 @@ function visuals_init_database()
     if (function_exists('create_databases')) {
         create_databases();
     }
-    new DisplayPRSDetails();
+    // new DisplayPRSDetails();
 }
 
 // Register activation hook
