@@ -95,6 +95,17 @@ function list_secure_links_content_template()
                     </div>
                 </a>
             </li>
+             <li class="u-2f9a71d2">
+                <a href="https://my.cison.org.ng/prs-registration-list/"
+                    class="u-f4e19b22">
+                    <div class="u-1d3c5b7a"><i class="fas fa-address-book"></i></div>
+                    <div class="u-e9b2c8f1">
+                        <h4>Q2 PRS Registration List</h4>
+                        <p>Comprehensive table of all Q2 PRS.</p>
+                        <span class="u-a73c91eb">View Table <i class="fas fa-table"></i></span>
+                    </div>
+                </a>
+            </li>
         </ul>
     </div>
 
