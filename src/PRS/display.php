@@ -33,6 +33,7 @@ function display_gravity_form_entries_shortcode($atts)
                     <th style="padding: 8px;">Entry ID</th>
                     <th style="padding: 8px;">First Name</th>
                     <th style="padding: 8px;">LastName</th>
+                    <th style="padding: 8px;">Email</th>
                     <th style="padding: 8px;">Date Submitted</th>
                     <th style="padding: 8px;">Payment Status</th>
                 </tr>
@@ -42,7 +43,8 @@ function display_gravity_form_entries_shortcode($atts)
                     <tr>
                         <td style="padding: 8px;"><?php echo esc_html($entry['id']); ?></td>
                         <!-- Replace '1' and '2' with your actual Gravity Forms Field IDs -->
-                        <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '1')); ?></td>
+                        <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '1.2')); ?></td>
+                        <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '1.6')); ?></td>
                         <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '2')); ?></td>
                         <td style="padding: 8px;"><?php echo esc_html($entry['date_created']); ?></td>
                         <td style="padding: 8px;">Pending</td>
