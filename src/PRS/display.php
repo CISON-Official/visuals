@@ -46,7 +46,7 @@ function display_gravity_form_entries_shortcode($atts)
 
     $entries = GFAPI::get_entries(
         $form_id,
-        array(),
+        array("status" => "active"),
         array(),
         array('offset' => 0, 'page_size' => 200)
     );
