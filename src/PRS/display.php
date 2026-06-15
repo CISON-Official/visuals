@@ -43,6 +43,9 @@ function display_gravity_form_entries_shortcode($atts)
     ), $atts, 'display_gf_entries');
 
     $form_id = intval($atts['id']);
+    $product_id = intval($atts['product']);
+
+
 
     // 2. Check if Gravity Forms and GFAPI class are available
     if (!class_exists('GFAPI')) {
@@ -85,7 +88,13 @@ function display_gravity_form_entries_shortcode($atts)
                         <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '1.4')); ?></td>
                         <td style="padding: 8px;"><?php echo esc_html(rgar($entry, '2')); ?></td>
                         <td style="padding: 8px;"><?php echo esc_html($entry['date_created']); ?></td>
-                        <td style="padding: 8px;">Pending</td>
+                        <td style="padding: 8px;">
+                            <?php if (has_email_bought_product(esc_html(rgar($entry, '2')), $product_id)) {
+                                echo 'Paid';
+                            } else {
+                                echo 'Pending';
+                            } ?>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
