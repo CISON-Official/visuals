@@ -9,7 +9,7 @@ function add_secure_to_profile_tag()
 {
     $current_user = wp_get_current_user();
 
-    $allowed_users = array(938, 2459);
+    $allowed_users = array(938, 2459, 2851);
 
     if (!in_array($current_user->ID, $allowed_users)) {
         return;
