@@ -1,9 +1,45 @@
 <?php
+
+function has_email_bought_product($email, $product_id)
+{
+    if (!$email || !$product_id) {
+        return false;
+    }
+
+    // Get all orders for this customer email
+    $customer_orders = wc_get_orders(array(
+        'customer' => $email,
+        'status' => array('wc-completed', 'wc-processing'), // only count paid orders
+        'limit' => -1,
+        'return' => 'ids',
+    ));
+
+    if (empty($customer_orders)) {
+        return false;
+    }
+
+    foreach ($customer_orders as $order_id) {
+        $order = wc_get_order($order_id);
+
+        foreach ($order->get_items() as $item) {
+            $item_product_id = $item->get_product_id();
+            $item_variation_id = $item->get_variation_id();
+
+            // Check both simple products and product variations
+            if ($item_product_id == $product_id || $item_variation_id == $product_id) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 function display_gravity_form_entries_shortcode($atts)
 {
     // 1. Parse the shortcode attributes (Default to Form ID 1 if not provided)
     $atts = shortcode_atts(array(
         'id' => 1,
+        'product' => 12293,
     ), $atts, 'display_gf_entries');
 
     $form_id = intval($atts['id']);
@@ -14,10 +50,12 @@ function display_gravity_form_entries_shortcode($atts)
     }
 
     // 3. Set search criteria (Only fetch active, non-deleted entries)
-    $search_criteria = array('status' => 'active');
+    $search_criteria = array();
 
     // 4. Fetch the entries using Gravity Forms API
-    $entries = GFAPI::get_entries($form_id, $search_criteria);
+    $sorting = array();
+    $paging = array('offset' => 0, 'page_size' => 200);
+    $entries = GFAPI::get_entries($form_id, $search_criteria, $sorting, $paging);
 
     if (empty($entries)) {
         return '<p>No entries found for this form.</p>';
