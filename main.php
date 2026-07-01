@@ -71,3 +71,5 @@ require_once VISUALS_PATH . 'src/corporate/default_member_dir.php';
 // add_action('plugins_loaded', function () {
 //    new DisplayPRSDetails(); 
 // });
+
+require_once VISUALS_PATH . 'src/templates/conference_table.php';
