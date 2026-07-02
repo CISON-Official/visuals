@@ -10,7 +10,15 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
-	'/certificate-verifiers/',
+        '/q3-prs-student-registration/',
+        '/q4-prs-student-registration/',
+        '/q3-prs-virtual-registration/',
+        '/q4-prs-virtual-registration/',
+        '/q3-prs-corporate-registration/',
+        '/q4-prs-corporate-registration/',
+        '/q3-prs-individual-registration/',
+        '/q4-prs-individual-registration/',
+	    '/certificate-verifiers/',
         '/q2-virtual-prs-registration/',
         '/2nd-quarter-prs-student-registration/',
         '/2nd-prs-individual-registration/',
