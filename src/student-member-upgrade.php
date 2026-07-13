@@ -34,7 +34,7 @@ final class Student_Member_Upgrade
     private function register_hooks(): void
     {
 
-        add_action('bp_before_member_header_meta', [$this, 'display_profile_header_upgrade_button'], 20);
+        add_action('bp_before_member_header_meta', [$this, 'display_profile_header_upgrade_button'], 100);
 
 
         add_action('wp_ajax_submit_cison_upgrade', [$this, 'ajax_submit_upgrade_request']);
