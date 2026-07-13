@@ -33,13 +33,21 @@ final class Student_Member_Upgrade
 
     private function register_hooks(): void
     {
+        add_action(
+            'bp_before_member_header_meta',
+            [$this, 'display_profile_header_upgrade_button'],
+            30
+        );
 
-        add_action('bp_before_member_header_meta', [$this, 'display_profile_header_upgrade_button'], 30);
+        add_action(
+            'wp_ajax_submit_cison_upgrade',
+            [$this, 'ajax_submit_upgrade_request']
+        );
 
-
-        add_action('wp_ajax_submit_cison_upgrade', [$this, 'ajax_submit_upgrade_request']);
-
-        add_submenu_page('tools.php', 'CISON Upgrade Requests', 'Upgrade Requests', 'manage_options', 'cison-upgrade-requests', [$this, 'render_upgrade_requests_page']);
+        add_action(
+            'admin_menu',
+            [$this, 'register_admin_menu']
+        );
     }
 
     public function display_profile_header_upgrade_button()
@@ -296,7 +304,17 @@ final class Student_Member_Upgrade
         echo '</tbody></table></div>';
     }
 
-
+    public function register_admin_menu(): void
+    {
+        add_submenu_page(
+            'tools.php',
+            'CISON Upgrade Requests',
+            'Upgrade Requests',
+            'manage_options',
+            'cison-upgrade-requests',
+            [$this, 'render_upgrade_requests_page']
+        );
+    }
 
 }
 
