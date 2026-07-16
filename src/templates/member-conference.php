@@ -116,6 +116,8 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 
     return $confirmation;
 }
+
+
 function save_nsa_registration_entry($entry, $form)
 {
     global $wpdb;
@@ -130,21 +132,22 @@ function save_nsa_registration_entry($entry, $form)
     }
 
     $data = array(
-        'member_id' => sanitize_text_field(rgar($entry, '10')),
+        'member_id' => sanitize_text_field(rgar($entry, '6')),
         'registering_for' => implode(', ', $registering_for),
         'title' => sanitize_text_field(rgar($entry, '1')),
-        'first_name' => sanitize_text_field(rgar($entry, '2.3')),
-        'last_name' => sanitize_text_field(rgar($entry, '2.6')),
-        'email' => sanitize_email(rgar($entry, '3')),
-        'phone' => sanitize_text_field(rgar($entry, '4')),
-        'occupation' => sanitize_text_field(rgar($entry, '5')),
-        'organisation' => sanitize_text_field(rgar($entry, '6')),
-        'street' => sanitize_text_field(rgar($entry, '8.1')),
-        'city' => sanitize_text_field(rgar($entry, '8.3')),
-        'state' => sanitize_text_field(rgar($entry, '8.4')),
-        'postcode' => sanitize_text_field(rgar($entry, '8.5')),
-        'country' => sanitize_text_field(rgar($entry, '8.6')),
-        'gender' => sanitize_text_field(rgar($entry, '9')),
+        'first_name' => sanitize_text_field(rgar($entry, '3.3')),
+        'middle_name' => sanitize_text_field(rgar($entry, '3.4')),
+        'last_name' => sanitize_text_field(rgar($entry, '3.6')),
+        'email' => sanitize_email(rgar($entry, '4')),
+        'phone' => sanitize_text_field(rgar($entry, '5')),
+        'occupation' => sanitize_text_field(rgar($entry, '7')),
+        'organisation' => sanitize_text_field(rgar($entry, '8')),
+        'street' => sanitize_text_field(rgar($entry, '14.1')),
+        'city' => sanitize_text_field(rgar($entry, '14.3')),
+        'state' => sanitize_text_field(rgar($entry, '14.4')),
+        'postcode' => sanitize_text_field(rgar($entry, '14.5')),
+        'country' => sanitize_text_field(rgar($entry, '14.6')),
+        'gender' => sanitize_text_field(rgar($entry, '13')),
         'order_id' => 0,
         'payment_status' => 'pending',
         'ip_address' => sanitize_text_field(rgar($entry, 'ip')),
