@@ -17,22 +17,18 @@ add_action('wp_enqueue_scripts', 'enqueue_registration_scripts');
 
 
 // ============================================================
-// 2. ADD TO CART
+// 2. SYNC CART (replaces single-item add-to-cart)
+//    Accepts an array of product IDs (0, 1, or 2 of them),
+//    empties the cart, then adds each one. This lets a user
+//    hold Conference + Preconference at the same time.
 // ============================================================
-function ajax_add_to_cart_handler()
+function ajax_sync_cart_handler()
 {
-    if (is_user_logged_in() && !wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
         wp_send_json_error('Invalid nonce');
         wp_die();
     }
 
-    $product_id = intval($_POST['product_id']);
-    $quantity = 1;
-
-    if (!$product_id) {
-        wp_send_json_error('No product ID');
-        wp_die();
-    }
     if (!class_exists('WooCommerce') || !WC()) {
         wp_send_json_error('WooCommerce unavailable');
         wp_die();
@@ -45,28 +41,55 @@ function ajax_add_to_cart_handler()
         wp_die();
     }
 
-    $product = wc_get_product($product_id);
-    if (!$product || !$product->exists()) {
-        wp_send_json_error("Product $product_id not found");
+    // product_ids arrives as an array, e.g. product_ids[]=12817&product_ids[]=12816
+    $raw_ids = isset($_POST['product_ids']) ? (array) $_POST['product_ids'] : array();
+    $product_ids = array();
+    foreach ($raw_ids as $id) {
+        $id = intval($id);
+        if ($id > 0) {
+            $product_ids[] = $id;
+        }
+    }
+
+    // Always start clean so stale selections never linger
+    WC()->cart->empty_cart();
+
+    if (empty($product_ids)) {
+        WC()->cart->calculate_totals();
+        wp_send_json_success(array(
+            'message' => 'Cart cleared',
+            'cart_count' => WC()->cart->get_cart_contents_count(),
+        ));
         wp_die();
     }
 
-    WC()->cart->empty_cart();
-    $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity);
+    $added = array();
+    foreach ($product_ids as $product_id) {
+        $product = wc_get_product($product_id);
+        if (!$product || !$product->exists()) {
+            wp_send_json_error("Product $product_id not found");
+            wp_die();
+        }
 
-    if ($cart_item_key) {
-        WC()->cart->calculate_totals();
-        wp_send_json_success(array(
-            'message' => 'Added to cart',
-            'cart_count' => WC()->cart->get_cart_contents_count()
-        ));
-    } else {
-        wp_send_json_error('Failed to add product');
+        $cart_item_key = WC()->cart->add_to_cart($product_id, 1);
+        if (!$cart_item_key) {
+            wp_send_json_error("Failed to add product $product_id");
+            wp_die();
+        }
+        $added[] = $product_id;
     }
+
+    WC()->cart->calculate_totals();
+    wp_send_json_success(array(
+        'message' => 'Cart updated',
+        'cart_count' => WC()->cart->get_cart_contents_count(),
+        'added' => $added,
+        'cart_total' => WC()->cart->get_cart_total(),
+    ));
     wp_die();
 }
-add_action('wp_ajax_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
-add_action('wp_ajax_nopriv_add_to_cart_dynamic', 'ajax_add_to_cart_handler');
+add_action('wp_ajax_sync_cart_dynamic', 'ajax_sync_cart_handler');
+add_action('wp_ajax_nopriv_sync_cart_dynamic', 'ajax_sync_cart_handler');
 
 
 // ============================================================
@@ -91,7 +114,8 @@ add_action('wp_ajax_nopriv_load_wc_checkout', 'ajax_load_wc_checkout');
 
 
 // ============================================================
-// 4. CLEAR CART
+// 4. CLEAR CART (kept as a standalone utility, e.g. for a
+//    "reset" button — sync_cart_dynamic also clears on its own)
 // ============================================================
 function ajax_clear_cart()
 {
@@ -126,27 +150,28 @@ function ajax_save_registration()
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
 
-    // registering_for arrives as a comma-joined string from JS
+    // registering_for arrives as a comma-joined string from JS,
+    // e.g. "conference_onsite, preconference_virtual"
     $data = array(
-        'member_id'       => sanitize_text_field($_POST['member_id'] ?? ''),
+        'member_id' => sanitize_text_field($_POST['member_id'] ?? ''),
         'registering_for' => sanitize_text_field($_POST['registering_for'] ?? ''),
-        'title'           => sanitize_text_field($_POST['title'] ?? ''),
-        'first_name'      => sanitize_text_field($_POST['first_name'] ?? ''),
-        'middle_name'     => sanitize_text_field($_POST['middle_name'] ?? ''),
-        'last_name'       => sanitize_text_field($_POST['last_name'] ?? ''),
-        'email'           => sanitize_email($_POST['email'] ?? ''),
-        'phone'           => sanitize_text_field($_POST['phone'] ?? ''),
-        'occupation'      => sanitize_text_field($_POST['occupation'] ?? ''),
-        'organisation'    => sanitize_text_field($_POST['organisation'] ?? ''),
-        'street'          => sanitize_text_field($_POST['street'] ?? ''),
-        'city'            => sanitize_text_field($_POST['city'] ?? ''),
-        'state'           => sanitize_text_field($_POST['state'] ?? ''),
-        'postcode'        => sanitize_text_field($_POST['postcode'] ?? ''),
-        'country'         => sanitize_text_field($_POST['country'] ?? 'NG'),
-        'gender'          => sanitize_text_field($_POST['gender'] ?? ''),
-        'hear_about'      => sanitize_text_field($_POST['hear_about'] ?? ''),
-        'payment_status'  => 'pending',
-        'ip_address'      => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+        'title' => sanitize_text_field($_POST['title'] ?? ''),
+        'first_name' => sanitize_text_field($_POST['first_name'] ?? ''),
+        'middle_name' => sanitize_text_field($_POST['middle_name'] ?? ''),
+        'last_name' => sanitize_text_field($_POST['last_name'] ?? ''),
+        'email' => sanitize_email($_POST['email'] ?? ''),
+        'phone' => sanitize_text_field($_POST['phone'] ?? ''),
+        'occupation' => sanitize_text_field($_POST['occupation'] ?? ''),
+        'organisation' => sanitize_text_field($_POST['organisation'] ?? ''),
+        'street' => sanitize_text_field($_POST['street'] ?? ''),
+        'city' => sanitize_text_field($_POST['city'] ?? ''),
+        'state' => sanitize_text_field($_POST['state'] ?? ''),
+        'postcode' => sanitize_text_field($_POST['postcode'] ?? ''),
+        'country' => sanitize_text_field($_POST['country'] ?? 'NG'),
+        'gender' => sanitize_text_field($_POST['gender'] ?? ''),
+        'hear_about' => sanitize_text_field($_POST['hear_about'] ?? ''),
+        'payment_status' => 'pending',
+        'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
     );
 
     $required = ['registering_for', 'title', 'first_name', 'last_name', 'email', 'phone', 'street', 'city', 'state', 'country', 'gender'];
@@ -167,7 +192,7 @@ function ajax_save_registration()
     if ($result !== false) {
         wp_send_json_success(array(
             'registration_id' => $wpdb->insert_id,
-            'message'         => 'Registration saved successfully',
+            'message' => 'Registration saved successfully',
         ));
     } else {
         wp_send_json_error('Database error: ' . $wpdb->last_error);
@@ -184,7 +209,8 @@ add_action('wp_ajax_nopriv_save_registration', 'ajax_save_registration');
 function link_registration_to_order($order_id)
 {
     $registration_id = WC()->session ? WC()->session->get('nsa_registration_id') : 0;
-    if (!$registration_id) return;
+    if (!$registration_id)
+        return;
 
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
@@ -278,10 +304,14 @@ function registration_form_with_checkout_shortcode()
             <div class="mb-4">
                 <h6>Address <span class="text-danger">*</span></h6>
                 <div class="row">
-                    <div class="col-md-12 mb-2"><input type="text" class="form-control" name="street" placeholder="Street Address" required></div>
-                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="city" placeholder="City/Town" required></div>
-                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="state" placeholder="State" required></div>
-                    <div class="col-md-2 mb-2"><input type="text" class="form-control" name="postcode" placeholder="Postcode"></div>
+                    <div class="col-md-12 mb-2"><input type="text" class="form-control" name="street"
+                            placeholder="Street Address" required></div>
+                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="city" placeholder="City/Town"
+                            required></div>
+                    <div class="col-md-4 mb-2"><input type="text" class="form-control" name="state" placeholder="State"
+                            required></div>
+                    <div class="col-md-2 mb-2"><input type="text" class="form-control" name="postcode"
+                            placeholder="Postcode"></div>
                     <div class="col-md-2 mb-2">
                         <select class="form-select" name="country" required>
                             <option value="">Country</option>
@@ -323,7 +353,8 @@ function registration_form_with_checkout_shortcode()
                 <h5>CISON ID <span class="text-danger">*</span></h5>
                 <div class="row">
                     <div class="col-md-8">
-                        <input type="text" class="form-control" name="member_id" pattern="[0-9]{8}" title="Enter valid CISON ID (8 digits)">
+                        <input type="text" class="form-control" name="member_id" pattern="[0-9]{8}"
+                            title="Enter valid CISON ID (8 digits)">
                     </div>
                 </div>
             </div>
@@ -331,38 +362,51 @@ function registration_form_with_checkout_shortcode()
             <div class="mb-4">
                 <h5>Registering for <span class="text-danger">*</span></h5>
                 <p class="text-muted small mb-2">
-                    You may select the Pre-Conference Workshop together with <em>one</em> conference option,
-                    or a single conference option on its own. You cannot select both On-Site and Virtual at the same time.
+                    You may pick one Conference option and/or one Preconference Workshop option.
+                    You cannot select both On-Site and Virtual within the same category
+                    (e.g. Conference On-Site + Conference Virtual together is not allowed).
                 </p>
 
-                <!-- Pre-conference workshop -->
-                <div class="form-check">
-                    <input class="" type="checkbox"
-                           name="registering_for[]" value="workshop"
-                           id="chk_workshop" onchange="handleRegistrationChange()">
-                    <label class="form-check-label" for="chk_workshop">
-                        Pre-Conference Workshop only
-                    </label>
+                <!-- Preconference Workshop group -->
+                <div class="reg-group mb-3">
+                    <h6 class="mb-2">Preconference Workshop</h6>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input reg-preconference" name="registering_for[]"
+                            value="preconference_onsite" id="chk_preconference_onsite"
+                            onchange="handleRegistrationChange('preconference', 'chk_preconference_onsite')">
+                        <label class="form-check-label" for="chk_preconference_onsite">
+                            Preconference Workshop (On-Site)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input reg-preconference" name="registering_for[]"
+                            value="preconference_virtual" id="chk_preconference_virtual"
+                            onchange="handleRegistrationChange('preconference', 'chk_preconference_virtual')">
+                        <label class="form-check-label" for="chk_preconference_virtual">
+                            Preconference Workshop (Virtual)
+                        </label>
+                    </div>
                 </div>
 
-                <!-- On-site conference -->
-                <div class="form-check">
-                    <input class="" type="checkbox"
-                           name="registering_for[]" value="conference"
-                           id="chk_conference" onchange="handleRegistrationChange()">
-                    <label class="form-check-label" for="chk_conference">
-                        3rd Annual Conference only (On-Site) (Early Bird)
-                    </label>
-                </div>
-
-                <!-- Virtual conference -->
-                <div class="form-check">
-                    <input class="" type="checkbox"
-                           name="registering_for[]" value="virtual"
-                           id="chk_virtual" onchange="handleRegistrationChange()">
-                    <label class="form-check-label" for="chk_virtual">
-                        3rd Annual Conference only (Virtual) (Early Bird)
-                    </label>
+                <!-- Conference group -->
+                <div class="reg-group mb-3">
+                    <h6 class="mb-2">3rd Annual Conference</h6>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input reg-conference" name="registering_for[]"
+                            value="conference_onsite" id="chk_conference_onsite"
+                            onchange="handleRegistrationChange('conference', 'chk_conference_onsite')">
+                        <label class="form-check-label" for="chk_conference_onsite">
+                            3rd Annual Conference (On-Site) (Early Bird)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input reg-conference" name="registering_for[]"
+                            value="conference_virtual" id="chk_conference_virtual"
+                            onchange="handleRegistrationChange('conference', 'chk_conference_virtual')">
+                        <label class="form-check-label" for="chk_conference_virtual">
+                            3rd Annual Conference (Virtual) (Early Bird)
+                        </label>
+                    </div>
                 </div>
 
                 <div id="registration-error" class="text-danger small mt-1" style="display:none;"></div>
@@ -404,10 +448,30 @@ function registration_form_with_checkout_shortcode()
     </div>
 
     <style>
-        .registration-container { max-width: 900px; margin: 0 auto; padding: 20px; }
-        .text-danger { color: #dc3545 !important; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        #checkout-container .woocommerce { padding: 20px; }
+        .registration-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .text-danger {
+            color: #dc3545 !important;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .reg-group {
+            padding: 10px 14px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+        }
+
+        #checkout-container .woocommerce {
+            padding: 20px;
+        }
     </style>
 
     <script>
@@ -418,51 +482,31 @@ function registration_form_with_checkout_shortcode()
             input.required = show;
         }
 
-        // ── Enforce mutually exclusive conference options ──────────────────────
+        // ── Enforce mutually exclusive options WITHIN each group ───────────────
         // Rules:
-        //   - "conference" (on-site) and "virtual" cannot both be checked
-        //   - "workshop" can accompany EITHER conference option, but not stand
-        //     in the way of either — it is always freely toggleable
-        function handleRegistrationChange() {
-            var chkConference = document.getElementById('chk_conference');
-            var chkVirtual    = document.getElementById('chk_virtual');
-            var errDiv        = document.getElementById('registration-error');
+        //   - Preconference group: onsite + virtual cannot both be checked
+        //   - Conference group:    onsite + virtual cannot both be checked
+        //   - The two groups are fully independent of each other — a user
+        //     may have one item checked in each group at the same time.
+        function handleRegistrationChange(group, changedId) {
+            var groupSelector = group === 'preconference' ? '.reg-preconference' : '.reg-conference';
+            var boxes = document.querySelectorAll(groupSelector);
+            var changed = document.getElementById(changedId);
 
-            // If the user just checked on-site, uncheck virtual (and vice-versa)
-            if (chkConference.checked && chkVirtual.checked) {
-                // Whichever was most recently checked wins; we detect by which
-                // event fired — but since we can't know that easily, we just
-                // uncheck virtual when conference is checked and vice-versa.
-                // The event always comes from the box that was just toggled ON.
-                // We store the "last changed" id via a data attribute.
-                var last = document.getElementById('chk_conference').dataset.last === 'true'
-                    ? 'conference' : 'virtual';
-
-                if (last === 'conference') {
-                    chkVirtual.checked = false;
-                } else {
-                    chkConference.checked = false;
-                }
+            if (changed.checked) {
+                boxes.forEach(function (box) {
+                    if (box.id !== changedId) {
+                        box.checked = false;
+                    }
+                });
             }
 
+            var errDiv = document.getElementById('registration-error');
             errDiv.style.display = 'none';
-            errDiv.textContent   = '';
+            errDiv.textContent = '';
 
-            // Trigger cart update
             updateCartFromCheckboxes();
         }
-
-        // Track which conference checkbox was most recently clicked
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('chk_conference').addEventListener('change', function() {
-                this.dataset.last = this.checked ? 'true' : 'false';
-                document.getElementById('chk_virtual').dataset.last = 'false';
-            });
-            document.getElementById('chk_virtual').addEventListener('change', function() {
-                this.dataset.last = this.checked ? 'true' : 'false';
-                document.getElementById('chk_conference').dataset.last = 'false';
-            });
-        });
     </script>
     <?php
     return ob_get_clean();
@@ -480,37 +524,42 @@ function add_registration_script()
 
         // ── Product IDs ──────────────────────────────────────────────────────
         var PRODUCTS = {
-            workshop            : 12816,   // workshop only
-            conference          : 12817,   // on-site only
-            virtual             : 12818,   // virtual only
-            workshop_conference : 12670,   // workshop + on-site
-            workshop_virtual    : 12672    // workshop + virtual
+            preconference_onsite  : 12816,
+            preconference_virtual : 14263,
+            conference_onsite     : 14270,
+            conference_virtual    : 14271
         };
 
-        // ── Resolve which product to add based on checked boxes ──────────────
-        function resolveProduct() {
-            var workshop   = $('#chk_workshop').is(':checked');
-            var conference = $('#chk_conference').is(':checked');
-            var virtual_   = $('#chk_virtual').is(':checked');
+        // ── Resolve which product IDs are currently selected ─────────────────
+        // Returns an array of 0, 1, or 2 product IDs (max one per group).
+        function resolveProducts() {
+            var ids = [];
 
-            if (workshop && conference)  return PRODUCTS.workshop_conference;
-            if (workshop && virtual_)    return PRODUCTS.workshop_virtual;
-            if (workshop)                return PRODUCTS.workshop;
-            if (conference)              return PRODUCTS.conference;
-            if (virtual_)                return PRODUCTS.virtual;
-            return null;
+            var preSel = $('.reg-preconference:checked').val();
+            if (preSel && PRODUCTS[preSel]) {
+                ids.push(PRODUCTS[preSel]);
+            }
+
+            var confSel = $('.reg-conference:checked').val();
+            if (confSel && PRODUCTS[confSel]) {
+                ids.push(PRODUCTS[confSel]);
+            }
+
+            return ids;
         }
 
         // ── Expose to inline HTML onchange ───────────────────────────────────
         window.updateCartFromCheckboxes = function() {
-            var productId = resolveProduct();
+            var productIds = resolveProducts();
 
-            // Always clear first
-            $.post(ajax_object.ajax_url, { action: 'clear_cart', nonce: ajax_object.nonce });
-
-            if (!productId) {
+            if (productIds.length === 0) {
                 $('.cart-status').text('');
                 $('#pay-submit').prop('disabled', true);
+                // still tell the server to clear out any stale cart items
+                $.post(ajax_object.ajax_url, {
+                    action: 'sync_cart_dynamic',
+                    nonce: ajax_object.nonce
+                });
                 return;
             }
 
@@ -518,12 +567,12 @@ function add_registration_script()
             $('#pay-submit').prop('disabled', true);
 
             $.post(ajax_object.ajax_url, {
-                action     : 'add_to_cart_dynamic',
-                product_id : productId,
-                nonce      : ajax_object.nonce
+                action        : 'sync_cart_dynamic',
+                product_ids   : productIds,
+                nonce         : ajax_object.nonce
             }, function(response) {
                 if (response.success) {
-                    $('.cart-status').html('✅ Item added! Ready to pay.');
+                    $('.cart-status').html('✅ Item(s) added! Ready to pay.');
                     $('#pay-submit').prop('disabled', false);
                 } else {
                     $('.cart-status').html('❌ Error: ' + (response.data || 'Try again'));
@@ -551,8 +600,8 @@ function add_registration_script()
             });
 
             // 2. At least one registration option must be checked
-            var productId = resolveProduct();
-            if (!productId) {
+            var productIds = resolveProducts();
+            if (productIds.length === 0) {
                 $('#registration-error').text('Please select at least one registration option.').show();
                 return;
             }
