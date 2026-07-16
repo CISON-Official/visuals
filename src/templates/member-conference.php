@@ -83,13 +83,23 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 
     $items_added = false;
 
+    $items_added = false;
+
     foreach ($entry as $key => $value) {
         if (strpos($key, '11.') === 0 && !empty($value)) {
             $checkbox_value = sanitize_text_field(strtolower(trim($value)));
             if (array_key_exists($checkbox_value, $product_mapping)) {
                 $product_id = $product_mapping[$checkbox_value];
-                WC()->cart->add_to_cart($product_id, 1);
-                $items_added = true;
+                $added = WC()->cart->add_to_cart($product_id, 1);
+
+                if ($added) {
+                    $items_added = true;
+                } else {
+                    error_log("NSA registration: failed to add product $product_id ($checkbox_value) to cart.");
+                    foreach (wc_get_notices('error') as $notice) {
+                        error_log("WC error: " . $notice['notice']);
+                    }
+                }
             }
         }
     }
@@ -97,7 +107,7 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
     if (!$items_added) {
         return array(
             'redirect' => false,
-            'message' => '<div class="gform_confirmation_message_' . $form['id'] . '">Please select at least one registration option (Preconference or Conference).</div>',
+            'message' => '<div class="gform_confirmation_message_' . $form['id'] . '">There was a problem adding your registration to the cart. Please contact support.</div>',
         );
     }
 
