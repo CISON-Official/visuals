@@ -48,6 +48,7 @@ function validate_member_type_input($validation_result)
 }
 
 add_filter('gform_confirmation', 'redirect_and_add_multiple_to_cart', 10, 4);
+add_filter('gform_confirmation', 'redirect_and_add_multiple_to_cart', 10, 4);
 function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 {
     $target_form_id = 26;
@@ -68,7 +69,10 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 
     $member_id = rgar($entry, '6');
     if (!verify_member_id($member_id)) {
-        return $confirmation;
+        return array(
+            'redirect' => false,
+            'message' => '<div class="gform_confirmation_message_' . $form['id'] . '">We could not verify your Membership ID. Please contact support before trying again.</div>',
+        );
     }
 
     save_nsa_registration_entry($entry, $form);
@@ -90,14 +94,18 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
         }
     }
 
-    if ($items_added) {
-        $checkout_url = wc_get_checkout_url();
-        $confirmation = array('redirect' => $checkout_url);
+    if (!$items_added) {
+        return array(
+            'redirect' => false,
+            'message' => '<div class="gform_confirmation_message_' . $form['id'] . '">Please select at least one registration option (Preconference or Conference).</div>',
+        );
     }
+
+    $checkout_url = wc_get_checkout_url();
+    $confirmation = array('redirect' => $checkout_url);
 
     return $confirmation;
 }
-
 function save_nsa_registration_entry($entry, $form)
 {
     global $wpdb;
