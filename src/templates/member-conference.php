@@ -28,7 +28,7 @@ function validate_member_type_input($validation_result)
         return $validation_result;
     }
 
-    $target_field_id = 10;
+    $target_field_id = 6;
     $member_id_value = rgpost('input_' . $target_field_id);
 
     if (!verify_member_id($member_id_value)) {
