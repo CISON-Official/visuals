@@ -5,8 +5,8 @@
 function enqueue_registration_scripts()
 {
     wp_enqueue_script('jquery');
-    wp_enqueue_script('bootstrap-js', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js', array('jquery'), '1.0', true);
-    wp_enqueue_style('bootstrap-css', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css');
+    // wp_enqueue_script('bootstrap-js', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js', array('jquery'), '1.0', true);
+    // wp_enqueue_style('bootstrap-css', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css');
 
     wp_localize_script('jquery', 'ajax_object', array(
         'ajax_url' => admin_url('admin-ajax.php'),
@@ -371,7 +371,7 @@ function registration_form_with_checkout_shortcode()
                 <div class="reg-group mb-3">
                     <h6 class="mb-2">Preconference Workshop</h6>
                     <div class="form-check">
-                        <input type="checkbox" class="form-check-input reg-preconference" name="registering_for[]"
+                        <input type="checkbox" class=" reg-preconference" name="registering_for[]"
                             value="preconference_onsite" id="chk_preconference_onsite"
                             onchange="handleRegistrationChange('preconference', 'chk_preconference_onsite')">
                         <label class="form-check-label" for="chk_preconference_onsite">
@@ -379,7 +379,7 @@ function registration_form_with_checkout_shortcode()
                         </label>
                     </div>
                     <div class="form-check">
-                        <input type="checkbox" class="form-check-input reg-preconference" name="registering_for[]"
+                        <input type="checkbox" class=" reg-preconference" name="registering_for[]"
                             value="preconference_virtual" id="chk_preconference_virtual"
                             onchange="handleRegistrationChange('preconference', 'chk_preconference_virtual')">
                         <label class="form-check-label" for="chk_preconference_virtual">
@@ -392,7 +392,7 @@ function registration_form_with_checkout_shortcode()
                 <div class="reg-group mb-3">
                     <h6 class="mb-2">3rd Annual Conference</h6>
                     <div class="form-check">
-                        <input type="checkbox" class="form-check-input reg-conference" name="registering_for[]"
+                        <input type="checkbox" class=" reg-conference" name="registering_for[]"
                             value="conference_onsite" id="chk_conference_onsite"
                             onchange="handleRegistrationChange('conference', 'chk_conference_onsite')">
                         <label class="form-check-label" for="chk_conference_onsite">
@@ -400,7 +400,7 @@ function registration_form_with_checkout_shortcode()
                         </label>
                     </div>
                     <div class="form-check">
-                        <input type="checkbox" class="form-check-input reg-conference" name="registering_for[]"
+                        <input type="checkbox" class=" reg-conference" name="registering_for[]"
                             value="conference_virtual" id="chk_conference_virtual"
                             onchange="handleRegistrationChange('conference', 'chk_conference_virtual')">
                         <label class="form-check-label" for="chk_conference_virtual">
