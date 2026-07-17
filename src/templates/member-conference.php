@@ -47,7 +47,7 @@ function validate_member_type_input($validation_result)
     return $validation_result;
 }
 
-add_filter('gform_confirmation', 'redirect_and_add_multiple_to_cart', 10, 4);
+// Cleaned up the duplicate add_filter call
 add_filter('gform_confirmation', 'redirect_and_add_multiple_to_cart', 10, 4);
 function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 {
@@ -77,9 +77,19 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 
     save_nsa_registration_entry($entry, $form);
 
+    // --- ENHANCEMENT FOR LOGGED-OUT GUESTS ---
+    // 1. Force WooCommerce to drop persistent session tracker cookies for non-logged-in visitors
+    if (isset(WC()->session) && !WC()->session->has_session()) {
+        WC()->session->set_customer_session_cookie(true);
+    }
+
+    // 2. Safely capture the active cart container or load an immediate fallback wrapper instance
     if (isset(WC()->cart)) {
         WC()->cart->empty_cart();
+    } else {
+        WC()->cart = new WC_Cart();
     }
+    // ------------------------------------------
 
     $items_added = false;
 
@@ -109,12 +119,16 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
         );
     }
 
+    // --- ENHANCEMENT FOR LOGGED-OUT GUESTS ---
+    // 3. Explicitly calculate metrics and prices so WooCommerce locks it in before routing
+    WC()->cart->calculate_totals();
+    // ------------------------------------------
+
     $checkout_url = wc_get_checkout_url();
     $confirmation = array('redirect' => $checkout_url);
 
     return $confirmation;
 }
-
 
 function save_nsa_registration_entry($entry, $form)
 {
@@ -122,9 +136,10 @@ function save_nsa_registration_entry($entry, $form)
 
     $table_name = $wpdb->prefix . 'nsa_registrations';
 
+    // Support gathering both Field 11 and Field 17 checkbox selections into your database logs
     $registering_for = array();
     foreach ($entry as $key => $value) {
-        if (strpos($key, '11.') === 0 && !empty($value)) {
+        if ((strpos($key, '11.') === 0 && !empty($value)) || (strpos($key, '17.') === 0 && !empty($value))) {
             $registering_for[] = sanitize_text_field($value);
         }
     }
@@ -151,26 +166,7 @@ function save_nsa_registration_entry($entry, $form)
         'ip_address' => sanitize_text_field(rgar($entry, 'ip')),
     );
 
-    $formats = array(
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%s',
-        '%d',
-        '%s',
-        '%s',
-    );
+    $formats = array('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s');
 
     $wpdb->insert($table_name, $data, $formats);
 }
