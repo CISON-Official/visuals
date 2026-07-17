@@ -525,7 +525,7 @@ function add_registration_script()
         // ── Product IDs ──────────────────────────────────────────────────────
         var PRODUCTS = {
             preconference_onsite  : 12816,
-            preconference_virtual : 14288,
+            preconference_virtual : 14302,
             conference_onsite     : 14270,
             conference_virtual    : 14271
         };
