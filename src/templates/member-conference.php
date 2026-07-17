@@ -83,10 +83,8 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 
     $items_added = false;
 
-    $items_added = false;
-
     foreach ($entry as $key => $value) {
-        if (strpos($key, '11.') === 0 && !empty($value)) {
+        if ((strpos($key, '11.') === 0 && !empty($value)) || (strpos($key, '17.') === 0 && !empty($value))) {
             $checkbox_value = sanitize_text_field(strtolower(trim($value)));
             if (array_key_exists($checkbox_value, $product_mapping)) {
                 $product_id = $product_mapping[$checkbox_value];
