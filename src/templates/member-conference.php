@@ -57,7 +57,7 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
     }
 
     $product_mapping = [
-        'preconference-virtual' => 14263,
+        'preconference-virtual' => 14288,
         'preconference-on-site' => 12816,
         'conference-virtual' => 12818,
         'conference-on-site' => 12817
