@@ -172,12 +172,12 @@ function save_nsa_registration_entry($entry, $form)
 }
 
 
-add_filter('woocommerce_is_purchasable', 'force_guest_purchase_for_conference', 9999, $product);
-function force_guest_purchase_for_conference($is_purchasable, $product)
-{
-    $exclude = array(14302,12816,12818,12817,14270,14271);
-    if (in_array($product->get_id(), $exclude)) {
-        return true;
-    }
-    return $is_purchasable;
-}
+// add_filter('woocommerce_is_purchasable', 'force_guest_purchase_for_conference', 9999, $product);
+// function force_guest_purchase_for_conference($is_purchasable, $product)
+// {
+//     $exclude = array(14302,12816,12818,12817,14270,14271);
+//     if (in_array($product->get_id(), $exclude)) {
+//         return true;
+//     }
+//     return $is_purchasable;
+// }
