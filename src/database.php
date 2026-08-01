@@ -228,6 +228,59 @@ function bbc_create_student_upgrade_table()
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta($sql);
 }
+function evp_initialize_election_database()
+{
+    global $wpdb;
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $table_elections = $wpdb->prefix . 'election_entries';
+    $sql_elections = "CREATE TABLE $table_elections (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        name varchar(255) NOT NULL,
+        position varchar(255) NOT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY  (id)
+    ) $charset_collate;";
+
+    $table_candidates = $wpdb->prefix . 'election_candidates';
+    $sql_candidates = "CREATE TABLE $table_candidates (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        election_id bigint(20) NOT NULL,
+        name varchar(255) NOT NULL,
+        description text NOT NULL,
+        manifesto longtext NOT NULL,
+        user_id bigint(20) DEFAULT 0 NOT NULL,
+        PRIMARY KEY  (id),
+        KEY election_link (election_id)
+    ) $charset_collate;";
+
+    // user_id / ip_address are nullable on purpose: a logged-in voter's
+    // ip_address is stored as NULL and an anonymous voter's user_id is
+    // stored as NULL, so each unique key below only constrains the
+    // column that's actually meaningful for that voter type. MySQL
+    // treats each NULL as distinct, so the two keys don't collide with
+    // each other.
+    $table_voters = $wpdb->prefix . 'election_voters';
+    $sql_voters = "CREATE TABLE $table_voters (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        election_id bigint(20) NOT NULL,
+        candidate_id bigint(20) NOT NULL,
+        name varchar(255) DEFAULT '' NOT NULL,
+        user_id bigint(20) DEFAULT NULL,
+        ip_address varchar(45) DEFAULT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY  (id),
+        UNIQUE KEY unique_voter_user (election_id, user_id),
+        UNIQUE KEY unique_voter_ip (election_id, ip_address)
+    ) $charset_collate;";
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta($sql_elections);
+    dbDelta($sql_candidates);
+    dbDelta($sql_voters);
+}
 
 function create_databases()
 {
@@ -239,4 +292,5 @@ function create_databases()
     alter_examination_registration_table();
     bbc_create_certificates_table();
     bbc_create_student_upgrade_table();
+    evp_initialize_election_database();
 }
