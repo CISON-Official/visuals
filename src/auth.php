@@ -62,7 +62,9 @@ function cison_custom_guest_access_control()
         '/corporate-registration-2/',
         '/signup/',
         '/group-conference-registration/',
-
+        '/product/workshop-virtual-2026/',
+        '/product/annual-conference-virtual-non-member-2026/',
+        '/product/annual-conference-on-site-non-member/'
     );
 
     $current_uri = $_SERVER['REQUEST_URI'];
