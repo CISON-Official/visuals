@@ -1,0 +1,14 @@
+.cmp-admin .cmp-admin-status {
+	display: inline-block;
+	font-size: 0.85em;
+	padding: 2px 10px;
+	border-radius: 999px;
+	background: #f0f0f1;
+}
+.cmp-admin .cmp-admin-status-approved,
+.cmp-admin .cmp-admin-status-paid { background: #e7f6ec; color: #1a7d3d; }
+.cmp-admin .cmp-admin-status-pending,
+.cmp-admin .cmp-admin-status-pending_payment,
+.cmp-admin .cmp-admin-status-pending_verification { background: #eaf1fd; color: #1d4ed8; }
+.cmp-admin .cmp-admin-status-rejected,
+.cmp-admin .cmp-admin-status-cancelled { background: #fdecec; color: #b3261e; }
