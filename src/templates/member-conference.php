@@ -46,8 +46,6 @@ function validate_member_type_input($validation_result)
     $validation_result['form'] = $form;
     return $validation_result;
 }
-
-// Cleaned up the duplicate add_filter call
 add_filter('gform_confirmation', 'redirect_and_add_multiple_to_cart', 10, 4);
 function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 {
@@ -56,16 +54,23 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
         return $confirmation;
     }
 
-    $product_mapping = [
-        'preconference-virtual' => 14302,
-        'preconference-on-site' => 12816,
-        'conference-virtual' => 12818,
-        'conference-on-site' => 12817
-    ];
-
     if (!function_exists('wc_get_checkout_url') || !function_exists('bp_get_member_type')) {
         return $confirmation;
     }
+
+    // Ensure cart/session/customer are fully bootstrapped before touching WC()->cart.
+    // Needed because on this hook, especially for logged-out guests, WooCommerce's
+    // session/cart may not be initialized yet.
+    if (function_exists('wc_load_cart')) {
+        wc_load_cart();
+    }
+
+    $product_mapping = [
+        'preconference-virtual' => 14302,
+        'preconference-on-site' => 12816,
+        'conference-virtual'    => 12818,
+        'conference-on-site'    => 12817,
+    ];
 
     $member_id = rgar($entry, '6');
     if (!verify_member_id($member_id)) {
@@ -77,19 +82,12 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 
     save_nsa_registration_entry($entry, $form);
 
-    // --- ENHANCEMENT FOR LOGGED-OUT GUESTS ---
-    // 1. Force WooCommerce to drop persistent session tracker cookies for non-logged-in visitors
-    if (isset(WC()->session) && !WC()->session->has_session()) {
+    // Force a persistent session cookie for guests so the cart survives the redirect.
+    if (WC()->session && !WC()->session->has_session()) {
         WC()->session->set_customer_session_cookie(true);
     }
 
-    // 2. Safely capture the active cart container or load an immediate fallback wrapper instance
-    if (isset(WC()->cart)) {
-        WC()->cart->empty_cart();
-    } else {
-        WC()->cart = new WC_Cart();
-    }
-    // ------------------------------------------
+    WC()->cart->empty_cart();
 
     $items_added = false;
 
@@ -119,10 +117,7 @@ function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
         );
     }
 
-    // --- ENHANCEMENT FOR LOGGED-OUT GUESTS ---
-    // 3. Explicitly calculate metrics and prices so WooCommerce locks it in before routing
     WC()->cart->calculate_totals();
-    // ------------------------------------------
 
     $checkout_url = wc_get_checkout_url();
     $confirmation = array('redirect' => $checkout_url);
