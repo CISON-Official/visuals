@@ -46,7 +46,7 @@ function validate_member_type_input($validation_result)
     $validation_result['form'] = $form;
     return $validation_result;
 }
-add_filter('gform_confirmation', 'redirect_and_add_multiple_to_cart', 10, 4);
+add_filter('gform_confirmation', 'redirect_and_add_multiple_to_cart', 9999, 4);
 function redirect_and_add_multiple_to_cart($confirmation, $form, $entry, $ajax)
 {
     $target_form_id = 26;
