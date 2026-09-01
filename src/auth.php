@@ -10,6 +10,7 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
+        '/fellowship-application/',
         '/2026-conference-and-preconference-registration/',
         '/q3-prs-student-registration/',
         '/q4-prs-student-registration/',
@@ -19,11 +20,11 @@ function cison_custom_guest_access_control()
         '/q4-prs-corporate-registration/',
         '/q3-prs-individual-registration/',
         '/q4-prs-individual-registration/',
-	    '/certificate-verifiers/',
+        '/certificate-verifiers/',
         '/q2-virtual-prs-registration/',
         '/2nd-quarter-prs-student-registration/',
         '/2nd-prs-individual-registration/',
-	    '/corporate-prs-2nd-quarter-registration/',
+        '/corporate-prs-2nd-quarter-registration/',
         '/examination-submissions/',
         '/checkout/',
         '/checkout/order-received/',
