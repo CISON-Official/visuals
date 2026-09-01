@@ -56,6 +56,7 @@ require_once VISUALS_PATH . 'src/profile/conference.php';
 require_once VISUALS_PATH . 'src/forms/conference.php';
 require_once VISUALS_PATH . 'src/forms/mock-examination.php';
 require_once VISUALS_PATH . 'src/forms/organisation_conference.php';
+require_once VISUALS_PATH . 'src/forms/cison-fellowship.php';
 
 // Authentication
 require_once VISUALS_PATH . 'src/auth.php';

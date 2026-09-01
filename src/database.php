@@ -282,6 +282,63 @@ function evp_initialize_election_database()
     dbDelta($sql_voters);
 }
 
+function create_fellowship_registration_table()
+{
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'cison_fellowship_registrations';
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $table_name (
+        id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+        reference_number varchar(40) DEFAULT '',
+        entry_id bigint(20) unsigned DEFAULT 0,
+        order_id bigint(20) unsigned DEFAULT 0,
+        is_member varchar(10) NOT NULL DEFAULT '',
+        is_nsa_fellow varchar(10) NOT NULL DEFAULT '',
+        membership_category varchar(50) DEFAULT '',
+        membership_number varchar(30) DEFAULT '',
+        title varchar(20) DEFAULT '',
+        first_name varchar(100) NOT NULL,
+        middle_name varchar(100) DEFAULT '',
+        last_name varchar(100) NOT NULL,
+        email varchar(100) NOT NULL,
+        phone varchar(30) NOT NULL,
+        gender varchar(30) DEFAULT '',
+        date_of_birth date NULL,
+        nationality varchar(100) DEFAULT '',
+        occupation varchar(150) DEFAULT '',
+        designation varchar(150) DEFAULT '',
+        employer varchar(150) DEFAULT '',
+        street varchar(200) DEFAULT '',
+        city varchar(100) DEFAULT '',
+        state varchar(100) DEFAULT '',
+        country varchar(100) DEFAULT '',
+        years_of_practice varchar(30) DEFAULT '',
+        area_of_practice text NULL,
+        academic_qualifications text NULL,
+        professional_experience text NULL,
+        publications text NULL,
+        num_sponsors int(11) DEFAULT 0,
+        signature text NULL,
+        product_ids varchar(255) DEFAULT '',
+        payment_status varchar(30) DEFAULT 'pending',
+        application_status varchar(30) DEFAULT 'submitted',
+        registration_date datetime DEFAULT CURRENT_TIMESTAMP,
+        updated_at datetime DEFAULT CURRENT_TIMESTAMP,
+        ip_address varchar(45) DEFAULT '',
+        PRIMARY KEY (id),
+        KEY email (email),
+        KEY reference_number (reference_number),
+        KEY order_id (order_id),
+        KEY payment_status (payment_status),
+        KEY registration_date (registration_date)
+    ) $charset_collate;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+}
+
 function create_databases()
 {
     global $wpdb;
@@ -290,6 +347,7 @@ function create_databases()
     alter_nsa_registration_table();
     create_examination_registration_table();
     alter_examination_registration_table();
+    create_fellowship_registration_table();
     bbc_create_certificates_table();
     bbc_create_student_upgrade_table();
     evp_initialize_election_database();
