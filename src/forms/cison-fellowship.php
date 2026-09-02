@@ -497,9 +497,11 @@ function cison_fellowship_save_on_payment_complete($order_id)
         'sponsor_2_status' => 'pending',
     );
 
-    $wpdb->insert($table_name, $insert_data);
+    $inserted = $wpdb->insert($table_name, $insert_data);
 
-    cison_fellowship_send_applicant_email($insert_data, $token);
+    if ($inserted) {
+        cison_fellowship_send_applicant_email($insert_data, $token);
+    }
 
     WC()->session->__unset('cison_fellowship_entry');
 }

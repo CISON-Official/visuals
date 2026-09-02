@@ -36,6 +36,10 @@ function visuals_init_database()
 register_activation_hook(__FILE__, 'visuals_init_database');
 add_action('admin_init', 'visuals_init_database');
 
+// Ensure the fellowship sponsor-column migration runs on front-end requests too,
+// so token lookups using the sponsor_token column always work.
+add_action('plugins_loaded', 'visuals_init_database');
+
 // 3. Core Database Logic
 require_once VISUALS_PATH . 'src/db/conference.php';
 require_once VISUALS_PATH . 'src/db/examination.php';
