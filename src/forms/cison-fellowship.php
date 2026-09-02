@@ -1,173 +1,325 @@
 <?php
 /**
- * CISON Fellowship Application - Gravity Forms + WooCommerce Checkout
+ * CISON Fellowship Application - Custom Form + WooCommerce Checkout
  *
- * When Gravity Forms form #27 (Fellowship Application) is submitted, this
- * file:
- *   1. Determines the fellowship type from the form inputs.
- *   2. Adds the relevant WooCommerce product(s) to the cart.
- *   3. Redirects straight to the WooCommerce checkout (skipping the cart page).
+ * Shortcodes:
+ *   [cison_fellowship_application]   - Main application form
+ *   [cison_fellowship_submissions]   - Admin submissions viewer
  *
- * The fellowship record is only saved to the database AFTER payment has
- * completed (see save_fellowship_on_payment_complete below).
+ * Flow:
+ *   1. Applicant fills form → WooCommerce cart → checkout
+ *   2. On payment: save to DB, generate token, email sponsor link
+ *   3. Sponsor 1 opens token link → fills sponsor 1 fields → submits
+ *   4. Sponsor 2 opens token link → fills sponsor 2 fields → submits
+ *   5. Application complete
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-define('CISON_FELLOWSHIP_FORM_ID', 27);
-define('CISON_FELLOWSHIP_ENTRY_KEY', 'cison_fellowship_entry');
+define('CISON_FELLOWSHIP_FORM_URL', home_url('/fellowship-application/'));
 
-/**
- * The URL of the page that hosts the fellowship form (form #27).
- *
- * This is used to build the "sponsor link" that is emailed to applicants so
- * they can share it with their two sponsors. Sponsors opening this link only
- * see (and can only edit) the sponsorship section.
- *
- * Replace with the actual page URL for your site, or set it via the
- * `cison_fellowship_form_url` filter.
- */
-if (!defined('CISON_FELLOWSHIP_FORM_URL')) {
-    define('CISON_FELLOWSHIP_FORM_URL', home_url('/fellowship-application/'));
-}
-
-// Sponsor share URL query parameter.
-define('CISON_FELLOWSHIP_SPONSOR_PARAM', 'cison_sponsor');
-
-/**
- * Field IDs that belong to the sponsorship sections and must remain editable
- * when the form is shared with sponsors (everything else gets locked).
- */
-function cison_fellowship_sponsor_field_ids()
-{
-    // Sponsor 1 fields.
-    $sponsor_1 = array(39, 40, 41, 42, 48);
-    // Sponsor 2 fields.
-    $sponsor_2 = array(44, 45, 46, 47, 50);
-
-    return array_merge($sponsor_1, $sponsor_2);
-}
-
-/**
- * Gravity Forms form that uses these products.
- *
- * Membership status (input 19): member / non-member
- * NSA Fellow (input 21): yes / no
- *
- * Mapping:
- *   - Non-member                         => product 14837
- *   - Member, NOT an NSA fellow          => product 14835
- *   - Member, NSA fellow                 => all 5 products:
- *                                              14830, 14839, 14841, 14856, 14866
- */
 define('CISON_FELLOWSHIP_PRODUCT_NON_MEMBER', 14837);
 define('CISON_FELLOWSHIP_PRODUCT_MEMBER_NON_FELLOW', 14835);
 define('CISON_FELLOWSHIP_PRODUCT_NSA_FELLOW', array(14830, 14839, 14841, 14856, 14866));
 
-function cison_get_fellowship_table_name()
+// ============================================================
+// HELPERS
+// ============================================================
+
+function cison_fellowship_get_table_name()
 {
     global $wpdb;
-
     return $wpdb->prefix . 'cison_fellowship_registrations';
 }
 
-function cison_generate_fellowship_reference_number()
+function cison_fellowship_get_form_defaults()
+{
+    return array(
+        'title' => '',
+        'first_name' => '',
+        'middle_name' => '',
+        'last_name' => '',
+        'email' => '',
+        'phone' => '',
+        'gender' => '',
+        'date_of_birth' => '',
+        'nationality' => '',
+        'occupation' => '',
+        'designation' => '',
+        'employer' => '',
+        'years_of_practice' => '',
+        'area_of_practice' => '',
+        'street' => '',
+        'city' => '',
+        'state' => '',
+        'state_manual' => '',
+        'country' => 'NG',
+        'membership_status' => '',
+        'membership_category' => '',
+        'membership_number' => '',
+        'nsa_fellow' => '',
+        'academic_qualifications' => array(),
+        'professional_experience' => '',
+        'publications' => '',
+        'sponsor_1_name' => '',
+        'sponsor_1_email' => '',
+        'sponsor_1_phone' => '',
+        'sponsor_1_organization' => '',
+        'sponsor_1_relationship' => '',
+        'sponsor_2_name' => '',
+        'sponsor_2_email' => '',
+        'sponsor_2_phone' => '',
+        'sponsor_2_organization' => '',
+        'sponsor_2_relationship' => '',
+    );
+}
+
+function cison_fellowship_get_titles()
+{
+    return array('Mr', 'Mrs', 'Ms', 'Dr', 'Prof');
+}
+
+function cison_fellowship_get_genders()
+{
+    return array('Male', 'Female', 'Prefer Not to Answer');
+}
+
+function cison_fellowship_get_membership_categories()
+{
+    return array(
+        'Fellow',
+        'Chartered Statistician',
+        'Member',
+        'Associate',
+    );
+}
+
+function cison_fellowship_get_countries()
+{
+    return array(
+        'NG' => 'Nigeria',
+        'GH' => 'Ghana',
+        'KE' => 'Kenya',
+        'ZA' => 'South Africa',
+        'US' => 'United States',
+        'GB' => 'United Kingdom',
+    );
+}
+
+function cison_fellowship_get_nigerian_states()
+{
+    return array(
+        'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa',
+        'Benue', 'Borno', 'Cross River', 'Delta', 'Ebonyi', 'Edo',
+        'Ekiti', 'Enugu', 'Federal Capital Territory', 'Gombe', 'Imo',
+        'Jigawa', 'Kaduna', 'Kano', 'Katsina', 'Kebbi', 'Kogi',
+        'Kwara', 'Lagos', 'Nasarawa', 'Niger', 'Ogun', 'Ondo',
+        'Osun', 'Oyo', 'Plateau', 'Rivers', 'Sokoto', 'Taraba',
+        'Yobe', 'Zamfara',
+    );
+}
+
+function cison_fellowship_sanitize($data)
+{
+    $sanitized = array();
+    $text_fields = array(
+        'title', 'first_name', 'middle_name', 'last_name', 'phone',
+        'gender', 'nationality', 'occupation', 'designation', 'employer',
+        'years_of_practice', 'area_of_practice', 'street', 'city',
+        'state', 'state_manual', 'country', 'membership_status',
+        'membership_category', 'membership_number', 'nsa_fellow',
+        'professional_experience', 'publications',
+        'sponsor_1_name', 'sponsor_1_phone', 'sponsor_1_organization',
+        'sponsor_1_relationship',
+        'sponsor_2_name', 'sponsor_2_phone', 'sponsor_2_organization',
+        'sponsor_2_relationship',
+    );
+
+    foreach ($text_fields as $field) {
+        $sanitized[$field] = isset($data[$field]) ? sanitize_text_field(wp_unslash($data[$field])) : '';
+    }
+
+    $sanitized['email'] = isset($data['email']) ? sanitize_email(wp_unslash($data['email'])) : '';
+    $sanitized['sponsor_1_email'] = isset($data['sponsor_1_email']) ? sanitize_email(wp_unslash($data['sponsor_1_email'])) : '';
+    $sanitized['sponsor_2_email'] = isset($data['sponsor_2_email']) ? sanitize_email(wp_unslash($data['sponsor_2_email'])) : '';
+    $sanitized['date_of_birth'] = isset($data['date_of_birth']) ? sanitize_text_field(wp_unslash($data['date_of_birth'])) : '';
+
+    $sanitized['academic_qualifications'] = array();
+    if (!empty($data['academic_qualifications']) && is_array($data['academic_qualifications'])) {
+        foreach ($data['academic_qualifications'] as $row) {
+            if (is_array($row)) {
+                $sanitized['academic_qualifications'][] = array_map('sanitize_text_field', $row);
+            }
+        }
+    }
+
+    return $sanitized;
+}
+
+function cison_fellowship_validate($data)
+{
+    $errors = array();
+
+    if (empty($data['first_name'])) {
+        $errors[] = 'First name is required.';
+    }
+    if (empty($data['last_name'])) {
+        $errors[] = 'Last name is required.';
+    }
+    if (empty($data['email']) || !is_email($data['email'])) {
+        $errors[] = 'A valid email address is required.';
+    }
+    if (empty($data['phone'])) {
+        $errors[] = 'Phone number is required.';
+    }
+    if (empty($data['membership_status'])) {
+        $errors[] = 'Membership status is required.';
+    }
+
+    return $errors;
+}
+
+function cison_fellowship_validate_sponsor($data, $sponsor_num)
+{
+    $errors = array();
+    $prefix = "sponsor_{$sponsor_num}_";
+
+    if (empty($data[$prefix . 'name'])) {
+        $errors[] = "Sponsor {$sponsor_num} name is required.";
+    }
+    if (empty($data[$prefix . 'email']) || !is_email($data[$prefix . 'email'])) {
+        $errors[] = "A valid email address is required for sponsor {$sponsor_num}.";
+    }
+
+    return $errors;
+}
+
+function cison_fellowship_generate_reference_number()
 {
     global $wpdb;
-
-    $table_name = cison_get_fellowship_table_name();
+    $table_name = cison_fellowship_get_table_name();
 
     do {
         $reference_number = 'CISON-FS-' . wp_date('Ymd') . '-' . wp_rand(1000, 9999);
-        $existing_id = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM $table_name WHERE reference_number = %s LIMIT 1",
-                $reference_number
-            )
+        $existing = $wpdb->get_var(
+            $wpdb->prepare("SELECT id FROM $table_name WHERE reference_number = %s LIMIT 1", $reference_number)
         );
-    } while ($existing_id);
+    } while ($existing);
 
     return $reference_number;
 }
 
-/**
- * Resolve which product IDs should be added to the cart for a submission.
- *
- * @param array $entry Gravity Forms entry values.
- * @return int[] Product IDs to add.
- */
-function cison_fellowship_resolve_products($entry)
+function cison_fellowship_generate_token()
 {
-    $membership = cison_fellowship_field_value($entry, 19);
-    $is_nsa_fellow = cison_fellowship_field_value($entry, 21);
+    return bin2hex(random_bytes(16));
+}
 
-    $is_non_member = in_array(strtolower($membership), array('non-member', 'non_member', 'nonmember'), true);
-    $is_member = in_array(strtolower($membership), array('member'), true);
+function cison_fellowship_resolve_products($data)
+{
+    $status = strtolower($data['membership_status'] ?? '');
+    $fellow = strtolower($data['nsa_fellow'] ?? '');
+
+    $is_non_member = in_array($status, array('non-member', 'non_member', 'nonmember'), true);
+    $is_member = in_array($status, array('member'), true);
 
     if ($is_non_member) {
         return array(CISON_FELLOWSHIP_PRODUCT_NON_MEMBER);
     }
 
     if ($is_member) {
-        $fellow = in_array(strtolower($is_nsa_fellow), array('yes', 'true', '1'), true);
-        if ($fellow) {
+        if (in_array($fellow, array('yes', 'true', '1'), true)) {
             return CISON_FELLOWSHIP_PRODUCT_NSA_FELLOW;
         }
-
         return array(CISON_FELLOWSHIP_PRODUCT_MEMBER_NON_FELLOW);
     }
 
-    // Fallback for an unrecognised membership value: treat as non-member.
     return array(CISON_FELLOWSHIP_PRODUCT_NON_MEMBER);
 }
 
-/**
- * Safely read a single value from a Gravity Forms entry array.
- *
- * @param array $entry The Gravity Forms entry.
- * @param int   $field_id Field ID.
- * @return string
- */
-function cison_fellowship_field_value($entry, $field_id)
+function cison_fellowship_get_application_by_token($token)
 {
-    return isset($entry[(string) $field_id]) ? trim((string) $entry[(string) $field_id]) : '';
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    return $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM $table_name WHERE sponsor_token = %s LIMIT 1", $token),
+        ARRAY_A
+    );
 }
 
-/**
- * Read a file-upload field's value and return the upload URL.
- *
- * @param array $entry Gravity Forms entry.
- * @param int   $field_id Field ID.
- * @return string
- */
-function cison_fellowship_file_url($entry, $field_id)
+function cison_fellowship_get_token_status($application)
 {
-    $raw = cison_fellowship_field_value($entry, $field_id);
-    if (empty($raw)) {
+    if (empty($application['sponsor_token'])) {
+        return 'none';
+    }
+    if (($application['sponsor_2_status'] ?? '') === 'submitted') {
+        return 'complete';
+    }
+    if (($application['sponsor_1_status'] ?? '') === 'submitted') {
+        return 's2';
+    }
+    return 's1';
+}
+
+function cison_fellowship_qualifications_to_string($quals)
+{
+    if (empty($quals) || !is_array($quals)) {
         return '';
     }
 
-    $json = json_decode($raw, true);
-
-    return is_array($json) && !empty($json)
-        ? (is_string($json[0]) ? $json[0] : '')
-        : $raw;
+    $lines = array();
+    foreach ($quals as $row) {
+        if (is_array($row)) {
+            $parts = array_filter(array_map('trim', $row));
+            $lines[] = implode(' | ', $parts);
+        }
+    }
+    return implode("\n", $lines);
 }
 
-/**
- * Hook: run after a Gravity Forms submission (form #27).
- *
- * Adds the correct product(s) to the WooCommerce cart, stores the entry data
- * in the session (so we can save to DB after payment), and redirects to
- * checkout.
- */
-add_action('gform_after_submission_' . CISON_FELLOWSHIP_FORM_ID, 'cison_fellowship_handle_submission', 10, 2);
-function cison_fellowship_handle_submission($entry, $form)
+function cison_fellowship_sponsor_link($token)
 {
-    // Always notify the applicant, even if the cart cannot be prepared.
-    cison_fellowship_send_applicant_email($entry);
+    return add_query_arg('token', $token, CISON_FELLOWSHIP_FORM_URL);
+}
+
+function cison_fellowship_get_full_name($row)
+{
+    return implode(' ', array_filter(array(
+        $row['first_name'] ?? '',
+        $row['middle_name'] ?? '',
+        $row['last_name'] ?? '',
+    )));
+}
+
+function cison_fellowship_render_status_badge($status)
+{
+    $normalized = strtolower(trim((string) $status));
+    $class = 'cison-fs-badge cison-fs-badge--' . sanitize_html_class($normalized ?: 'unknown');
+    return sprintf('<span class="%s">%s</span>', esc_attr($class), esc_html($status ?: 'N/A'));
+}
+
+// ============================================================
+// APPLICANT FORM SUBMISSION
+// ============================================================
+
+function cison_fellowship_handle_applicant_submission()
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['cison_fellowship_submit'])) {
+        return;
+    }
+
+    if (!isset($_POST['cison_fellowship_nonce']) || !wp_verify_nonce($_POST['cison_fellowship_nonce'], 'cison_fellowship_action')) {
+        return;
+    }
+
+    $data = cison_fellowship_sanitize($_POST);
+    $errors = cison_fellowship_validate($data);
+
+    if (!empty($errors)) {
+        return;
+    }
 
     if (!class_exists('WooCommerce') || !WC()) {
         return;
@@ -177,14 +329,9 @@ function cison_fellowship_handle_submission($entry, $form)
         WC()->initialize_cart();
     }
 
-    $product_ids = cison_fellowship_resolve_products($entry);
+    $product_ids = cison_fellowship_resolve_products($data);
 
-    // Always start clean so stale selections never linger.
     WC()->cart->empty_cart();
-
-    if (empty($product_ids)) {
-        return;
-    }
 
     foreach ($product_ids as $product_id) {
         $product = wc_get_product($product_id);
@@ -194,317 +341,1407 @@ function cison_fellowship_handle_submission($entry, $form)
     }
 
     WC()->cart->calculate_totals();
-
-    // Persist the entry so it can be saved to the DB once payment completes.
-    WC()->session->set(CISON_FELLOWSHIP_ENTRY_KEY, $entry);
+    WC()->session->set('cison_fellowship_entry', $data);
 
     wp_safe_redirect(wc_get_checkout_url());
     exit;
 }
+add_action('template_redirect', 'cison_fellowship_handle_applicant_submission');
 
-/**
- * @return string The shareable sponsor link for the fellowship form.
- */
-function cison_fellowship_sponsor_link()
+// ============================================================
+// SPONSOR FORM SUBMISSION
+// ============================================================
+
+function cison_fellowship_handle_sponsor_submission()
 {
-    $base = apply_filters('cison_fellowship_form_url', CISON_FELLOWSHIP_FORM_URL);
-
-    return add_query_arg(CISON_FELLOWSHIP_SPONSOR_PARAM, '1', $base);
-}
-
-/**
- * Email the applicant congratulating them for applying and instructing them
- * to get two sponsors to vouch for them via the shareable link.
- *
- * @param array $entry Gravity Forms entry.
- */
-function cison_fellowship_send_applicant_email($entry)
-{
-    $email = cison_fellowship_field_value($entry, 2);
-    if (empty($email) || !is_email($email)) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['cison_fellowship_sponsor_submit'])) {
         return;
     }
 
-    $first_name = cison_fellowship_field_value($entry, '1.3');
-    $sponsor_link = cison_fellowship_sponsor_link();
+    if (!isset($_POST['cison_fellowship_sponsor_nonce']) || !wp_verify_nonce($_POST['cison_fellowship_sponsor_nonce'], 'cison_fellowship_sponsor_action')) {
+        return;
+    }
 
-    $subject = apply_filters(
-        'cison_fellowship_email_subject',
-        'Congratulations on Your Fellowship Application'
-    );
+    $token = sanitize_text_field(wp_unslash($_POST['sponsor_token'] ?? ''));
+    if (empty($token)) {
+        return;
+    }
 
-    $message = sprintf(
-        "Dear %s,\n\n" .
-        "Congratulations on applying to become a CISON Fellow!\n\n" .
-        "To complete your application, you will need two sponsors to vouch for you.\n\n" .
-        "Please share the link below with your two potential sponsors. They will be able " .
-        "to provide their supporting details directly in your application form:\n\n" .
-        "%s\n\n" .
-        "Once both sponsors have submitted their endorsement, your application will be " .
-        "reviewed by the fellowship committee.\n\n" .
-        "Best regards,\nCISON",
-        $first_name ?: 'CISON Applicant',
-        $sponsor_link
-    );
+    $application = cison_fellowship_get_application_by_token($token);
+    if (!$application) {
+        return;
+    }
 
-    $headers = array('Content-Type: text/plain; charset=UTF-8');
+    $status = cison_fellowship_get_token_status($application);
+    $data = cison_fellowship_sanitize($_POST);
 
-    wp_mail($email, $subject, $message, $headers);
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    if ($status === 's1') {
+        $errors = cison_fellowship_validate_sponsor($data, 1);
+        if (!empty($errors)) {
+            return;
+        }
+
+        $sponsor_data = json_encode(array(
+            'name' => $data['sponsor_1_name'],
+            'email' => $data['sponsor_1_email'],
+            'phone' => $data['sponsor_1_phone'],
+            'organization' => $data['sponsor_1_organization'],
+            'relationship' => $data['sponsor_1_relationship'],
+        ));
+
+        $wpdb->update(
+            $table_name,
+            array(
+                'sponsor_1_status' => 'submitted',
+                'sponsor_1_data' => $sponsor_data,
+                'updated_at' => current_time('mysql'),
+            ),
+            array('id' => $application['id']),
+            array('%s', '%s', '%s'),
+            array('%d')
+        );
+    } elseif ($status === 's2') {
+        $errors = cison_fellowship_validate_sponsor($data, 2);
+        if (!empty($errors)) {
+            return;
+        }
+
+        $sponsor_data = json_encode(array(
+            'name' => $data['sponsor_2_name'],
+            'email' => $data['sponsor_2_email'],
+            'phone' => $data['sponsor_2_phone'],
+            'organization' => $data['sponsor_2_organization'],
+            'relationship' => $data['sponsor_2_relationship'],
+        ));
+
+        $wpdb->update(
+            $table_name,
+            array(
+                'sponsor_2_status' => 'submitted',
+                'sponsor_2_data' => $sponsor_data,
+                'updated_at' => current_time('mysql'),
+            ),
+            array('id' => $application['id']),
+            array('%s', '%s', '%s'),
+            array('%d')
+        );
+    }
+
+    wp_safe_redirect(add_query_arg('token', $token, CISON_FELLOWSHIP_FORM_URL));
+    exit;
 }
+add_action('template_redirect', 'cison_fellowship_handle_sponsor_submission');
 
-/**
- * Hook: after WooCommerce payment completes, save the fellowship record.
- */
-add_action('woocommerce_payment_complete', 'cison_fellowship_save_on_payment_complete');
-add_action('woocommerce_order_status_completed', 'cison_fellowship_save_on_payment_complete');
+// ============================================================
+// WOOCOMMERCE: SAVE ON PAYMENT COMPLETE
+// ============================================================
+
 function cison_fellowship_save_on_payment_complete($order_id)
 {
     if (!WC()->session) {
         return;
     }
 
-    $entry = WC()->session->get(CISON_FELLOWSHIP_ENTRY_KEY);
-    if (!$entry || !is_array($entry)) {
+    $data = WC()->session->get('cison_fellowship_entry');
+    if (!$data || !is_array($data)) {
         return;
     }
 
     global $wpdb;
-    $table_name = cison_get_fellowship_table_name();
+    $table_name = cison_fellowship_get_table_name();
 
-    $products = cison_fellowship_resolve_products($entry);
+    $products = cison_fellowship_resolve_products($data);
     $product_ids = implode(',', $products);
+    $token = cison_fellowship_generate_token();
 
-    $data = array(
-        'reference_number' => cison_generate_fellowship_reference_number(),
-        'entry_id' => isset($entry['id']) ? (int) $entry['id'] : 0,
+    $insert_data = array(
+        'reference_number' => cison_fellowship_generate_reference_number(),
         'order_id' => (int) $order_id,
-        'is_member' => cison_fellowship_field_value($entry, 19),
-        'is_nsa_fellow' => cison_fellowship_field_value($entry, 21),
-        'membership_category' => cison_fellowship_field_value($entry, 25),
-        'membership_number' => cison_fellowship_field_value($entry, 26),
-        'title' => cison_fellowship_field_value($entry, '1.2'),
-        'first_name' => cison_fellowship_field_value($entry, '1.3'),
-        'middle_name' => cison_fellowship_field_value($entry, '1.4'),
-        'last_name' => cison_fellowship_field_value($entry, '1.6'),
-        'email' => strtolower(sanitize_email(cison_fellowship_field_value($entry, 2))),
-        'phone' => cison_fellowship_field_value($entry, 13),
-        'gender' => cison_fellowship_field_value($entry, 9),
-        'date_of_birth' => cison_fellowship_date_value($entry, 10),
-        'nationality' => cison_fellowship_field_value($entry, 11),
-        'occupation' => cison_fellowship_field_value($entry, 14),
-        'designation' => cison_fellowship_field_value($entry, 15),
-        'employer' => cison_fellowship_field_value($entry, 16),
-        'street' => cison_fellowship_field_value($entry, '12.1'),
-        'city' => cison_fellowship_field_value($entry, '12.3'),
-        'state' => cison_fellowship_field_value($entry, '12.4'),
-        'country' => cison_fellowship_field_value($entry, '12.6'),
-        'years_of_practice' => cison_fellowship_field_value($entry, 27),
-        'area_of_practice' => cison_fellowship_field_value($entry, 28),
-        'academic_qualifications' => cison_fellowship_list_value($entry, 29),
-        'professional_experience' => cison_fellowship_field_value($entry, 30),
-        'publications' => cison_fellowship_field_value($entry, 31),
-        'num_sponsors' => (int) cison_fellowship_field_value($entry, 36),
-        'signature' => cison_fellowship_file_url($entry, 33),
+        'is_member' => $data['membership_status'],
+        'is_nsa_fellow' => $data['nsa_fellow'],
+        'membership_category' => $data['membership_category'],
+        'membership_number' => $data['membership_number'],
+        'title' => $data['title'],
+        'first_name' => $data['first_name'],
+        'middle_name' => $data['middle_name'],
+        'last_name' => $data['last_name'],
+        'email' => strtolower($data['email']),
+        'phone' => $data['phone'],
+        'gender' => $data['gender'],
+        'date_of_birth' => !empty($data['date_of_birth']) ? $data['date_of_birth'] : null,
+        'nationality' => $data['nationality'],
+        'occupation' => $data['occupation'],
+        'designation' => $data['designation'],
+        'employer' => $data['employer'],
+        'street' => $data['street'],
+        'city' => $data['city'],
+        'state' => $data['state'],
+        'country' => $data['country'],
+        'years_of_practice' => $data['years_of_practice'],
+        'area_of_practice' => $data['area_of_practice'],
+        'academic_qualifications' => cison_fellowship_qualifications_to_string($data['academic_qualifications']),
+        'professional_experience' => $data['professional_experience'],
+        'publications' => $data['publications'],
+        'num_sponsors' => 2,
         'product_ids' => $product_ids,
         'payment_status' => 'paid',
         'application_status' => 'submitted',
         'registration_date' => current_time('mysql'),
         'updated_at' => current_time('mysql'),
-        'ip_address' => isset($entry['ip']) ? $entry['ip'] : sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+        'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+        'sponsor_token' => $token,
+        'sponsor_1_status' => 'pending',
+        'sponsor_2_status' => 'pending',
     );
 
-    $wpdb->insert($table_name, $data);
+    $wpdb->insert($table_name, $insert_data);
 
-    // Clean up session once saved.
-    WC()->session->__unset(CISON_FELLOWSHIP_ENTRY_KEY);
+    cison_fellowship_send_applicant_email($insert_data, $token);
+
+    WC()->session->__unset('cison_fellowship_entry');
 }
+add_action('woocommerce_payment_complete', 'cison_fellowship_save_on_payment_complete');
+add_action('woocommerce_order_status_completed', 'cison_fellowship_save_on_payment_complete');
 
-/**
- * Format a Gravity Forms date-dropdown field (three array parts:
- * month, day, year) into a MySQL date string.
- *
- * @param array $entry Gravity Forms entry.
- * @param int   $field_id Field ID.
- * @return string|null
- */
-function cison_fellowship_date_value($entry, $field_id)
+// ============================================================
+// EMAIL
+// ============================================================
+
+function cison_fellowship_send_applicant_email($data, $token)
 {
-    $month = isset($entry[$field_id . '.1']) ? (int) $entry[$field_id . '.1'] : 0;
-    $day = isset($entry[$field_id . '.2']) ? (int) $entry[$field_id . '.2'] : 0;
-    $year = isset($entry[$field_id . '.3']) ? (int) $entry[$field_id . '.3'] : 0;
-
-    if (!$month || !$day || !$year) {
-        return null;
+    $email = $data['email'] ?? '';
+    if (empty($email) || !is_email($email)) {
+        return;
     }
 
-    return sprintf('%04d-%02d-%02d', $year, $month, $day);
+    $first_name = $data['first_name'] ?: 'Applicant';
+    $sponsor_link = cison_fellowship_sponsor_link($token);
+
+    $subject = apply_filters(
+        'cison_fellowship_email_subject',
+        'Congratulations on Your Fellowship Application'
+    );
+
+    $message_html = sprintf(
+        '<p>Dear %s,</p>' .
+        '<p>Congratulations on applying to become a <strong>CISON Fellow</strong>!</p>' .
+        '<p>To complete your application, you will need <strong>two sponsors</strong> to vouch for you.</p>' .
+        '<p>Please share the link below with your two potential sponsors. They will be able to ' .
+        'provide their supporting details directly in your application form:</p>' .
+        '<p style="margin:20px 0;"><a href="%s" style="display:inline-block;padding:12px 24px;color:#ffffff;background-color:#0f766e;border-radius:6px;text-decoration:none;">%s</a></p>' .
+        '<p style="font-size:13px;color:#6b7280;">If the button does not work, copy and paste this link into your browser:<br>%s</p>' .
+        '<p>Once both sponsors have submitted their endorsement, your application will be reviewed by the fellowship committee.</p>' .
+        '<p>Best regards,<br>CISON</p>',
+        esc_html($first_name),
+        esc_url($sponsor_link),
+        esc_html($sponsor_link),
+        esc_html($sponsor_link)
+    );
+
+    $headers = array('Content-Type: text/html; charset=UTF-8');
+
+    add_filter('wp_mail', 'cison_fellowship_add_plain_text_alt', 10, 1);
+    wp_mail($email, $subject, $message_html, $headers);
+    remove_filter('wp_mail', 'cison_fellowship_add_plain_text_alt', 10);
 }
 
-/**
- * Format a Gravity Forms list field (array of rows/columns) into a readable
- * multi-line string for storage.
- *
- * @param array $entry Gravity Forms entry.
- * @param int   $field_id Field ID.
- * @return string
- */
-function cison_fellowship_list_value($entry, $field_id)
+function cison_fellowship_add_plain_text_alt($atts)
 {
-    if (!isset($entry[$field_id]) || !is_array($entry[$field_id])) {
-        return '';
+    if (!isset($atts['message'])) {
+        return $atts;
     }
 
-    $lines = array();
-    foreach ($entry[$field_id] as $row) {
-        if (is_array($row)) {
-            $lines[] = implode(' | ', array_map('sanitize_text_field', $row));
-        } else {
-            $lines[] = sanitize_text_field($row);
+    $html = $atts['message'];
+    $plain = wp_strip_all_tags($html, true);
+    $plain = preg_replace("/\n{3,}/", "\n\n", $plain);
+
+    $atts['headers'][] = 'MIME-Version: 1.0';
+    $atts['headers'][] = 'Content-Type: multipart/alternative; boundary=cison_fellowship_boundary';
+
+    $body = "--cison_fellowship_boundary\r\n"
+        . "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+        . $plain . "\r\n\r\n"
+        . "--cison_fellowship_boundary\r\n"
+        . "Content-Type: text/html; charset=UTF-8\r\n\r\n"
+        . $html . "\r\n\r\n"
+        . "--cison_fellowship_boundary--";
+
+    $atts['message'] = $body;
+
+    return $atts;
+}
+
+// ============================================================
+// SHORTCODE: MAIN FORM
+// ============================================================
+
+function cison_fellowship_form_shortcode()
+{
+    $token = sanitize_text_field(wp_unslash($_GET['token'] ?? ''));
+    $application = null;
+    $view_status = 'new';
+
+    if (!empty($token)) {
+        $application = cison_fellowship_get_application_by_token($token);
+        if ($application) {
+            $view_status = cison_fellowship_get_token_status($application);
         }
     }
 
-    return implode("\n", $lines);
-}
+    $has_valid_token = ($view_status === 's1' || $view_status === 's2');
 
-/**
- * Whether the form is being opened via the sponsor share link.
- *
- * @return bool
- */
-function cison_fellowship_is_sponsor_view()
-{
-    return isset($_GET[CISON_FELLOWSHIP_SPONSOR_PARAM]) && '1' === $_GET[CISON_FELLOWSHIP_SPONSOR_PARAM];
-}
+    $values = cison_fellowship_get_form_defaults();
+    $feedback_message = '';
+    $feedback_type = '';
 
-/**
- * Lock every field except the sponsorship sections when the form is opened
- * via the sponsor link, and render the sponsor-side helper UI.
- */
-add_filter('gform_pre_render_' . CISON_FELLOWSHIP_FORM_ID, 'cison_fellowship_lock_fields_for_sponsor');
-function cison_fellowship_lock_fields_for_sponsor($form)
-{
-    if (!cison_fellowship_is_sponsor_view()) {
-        return $form;
-    }
+    if ($view_status === 'new') {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cison_fellowship_submit'])) {
+            $values = array_merge($values, cison_fellowship_sanitize($_POST));
 
-    if (empty($form['fields'])) {
-        return $form;
-    }
-
-    $sponsor_ids = cison_fellowship_sponsor_field_ids();
-    $sponsor_ids = array_map('intval', $sponsor_ids);
-
-    foreach ($form['fields'] as $field) {
-        $field_id = (int) $field->id;
-
-        if (in_array($field_id, $sponsor_ids, true)) {
-            continue;
-        }
-
-        // Non-sponsor fields: remove required validation and mark them as locked.
-        $field->isRequired = false;
-        $field->allowsPrepopulate = true;
-        $field->inputName = 'cison_locked_aspirant_' . $field_id;
-        $field->cssClass = trim($field->cssClass . ' cison-fellowship-locked');
-    }
-
-    return $form;
-}
-
-/**
- * Enqueue the frontend behaviour for the fellowship form:
- *  - Locks (readonly/disabled) non-sponsor fields when in sponsor view.
- *  - Enables Sponsor 2 only after Sponsor 1 is fully completed.
- */
-add_action('wp_enqueue_scripts', 'cison_fellowship_enqueue_assets');
-function cison_fellowship_enqueue_assets()
-{
-    if (!is_admin() && has_shortcode(get_post()->post_content, 'gravityform')) {
-        wp_add_inline_script('jquery', cison_fellowship_frontend_script());
-    }
-}
-
-function cison_fellowship_frontend_script()
-{
-    $form_id = CISON_FELLOWSHIP_FORM_ID;
-    $sponsor_ids_json = wp_json_encode(cison_fellowship_sponsor_field_ids());
-    $sponsor_1_json = wp_json_encode(array(39, 40, 41, 42, 48));
-
-    return <<<JS
-jQuery(function($) {
-    var FORM_ID = {$form_id};
-    var SPONSOR_FIELDS = {$sponsor_ids_json};
-    var SPONSOR_1 = {$sponsor_1_json};
-    var isSponsorView = new URLSearchParams(window.location.search).get('cison_sponsor') === '1';
-
-    function getFieldId($field) {
-        var id = $field.attr('id') || '';
-        var m = id.match(/^field_(\\d+)/);
-        return m ? parseInt(m[1], 10) : -1;
-    }
-
-    // Hidden field that drives the sponsor-section conditional logic.
-    // Value 1 shows Sponsor 1; value 2 also shows Sponsor 2.
-    var $sponsorCount = $('#input_' + FORM_ID + '_36');
-
-    function setSponsorCount(value) {
-        if ($sponsorCount.length) {
-            $sponsorCount.val(value)
-                .trigger('input')
-                .trigger('keyup')
-                .trigger('change');
-        }
-    }
-
-    // A sponsor field is considered complete when all its enabled inputs
-    // (or their checkboxes/radios) have a value.
-    function fieldIsFilled(id) {
-        var $field = $('#field_' + id);
-        var filled = true;
-        $field.find('input, select, textarea').each(function() {
-            var $el = $(this);
-            if ($el.is(':disabled')) { return; }
-            if ($el.prop('type') === 'checkbox' || $el.prop('type') === 'radio') {
-                if ($el.prop('checked')) { return; }
+            if (!isset($_POST['cison_fellowship_nonce']) || !wp_verify_nonce($_POST['cison_fellowship_nonce'], 'cison_fellowship_action')) {
+                $feedback_message = 'Security check failed. Please try again.';
+                $feedback_type = 'error';
+            } else {
+                $errors = cison_fellowship_validate($values);
+                if (!empty($errors)) {
+                    $feedback_message = implode(' ', $errors);
+                    $feedback_type = 'error';
+                }
             }
-            var val = $el.val();
-            if (!val || !String(val).trim()) { filled = false; }
-        });
-        return filled;
+        }
+    } elseif ($view_status === 's1' || $view_status === 's2') {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cison_fellowship_sponsor_submit'])) {
+            $feedback_message = 'Security check failed. Please try again.';
+            $feedback_type = 'error';
+        }
     }
 
-    function sponsor1Complete() {
-        return SPONSOR_1.every(fieldIsFilled);
+    $titles = cison_fellowship_get_titles();
+    $genders = cison_fellowship_get_genders();
+    $categories = cison_fellowship_get_membership_categories();
+    $countries = cison_fellowship_get_countries();
+    $nigerian_states = cison_fellowship_get_nigerian_states();
+
+    $is_member = ($values['membership_status'] === 'member');
+    $is_nsa_fellow = ($values['nsa_fellow'] === 'yes');
+    $is_nigeria = ($values['country'] ?? 'NG') === 'NG';
+    $manual_state_value = $is_nigeria
+        ? ($values['state_manual'] ?? '')
+        : ($values['state_manual'] ?: $values['state']);
+
+    $sponsor_1_data = !empty($application['sponsor_1_data']) ? json_decode($application['sponsor_1_data'], true) : array();
+    $sponsor_2_data = !empty($application['sponsor_2_data']) ? json_decode($application['sponsor_2_data'], true) : array();
+
+    ob_start();
+    ?>
+    <div class="cison-fs" data-has-token="<?php echo $has_valid_token ? '1' : '0'; ?>">
+        <?php if ($view_status === 'complete'): ?>
+            <div class="cison-fs__header">
+                <h3>Fellowship Application Complete</h3>
+                <p>Both sponsors have submitted their endorsements. Your application will be reviewed by the fellowship committee.</p>
+            </div>
+            <div class="cison-fs__alert cison-fs__alert--success">
+                Reference Number: <?php echo esc_html($application['reference_number']); ?>
+            </div>
+
+        <?php elseif ($view_status === 's1' || $view_status === 's2'): ?>
+            <div class="cison-fs__header">
+                <h3>CISON Fellowship - Sponsor Endorsement</h3>
+                <p>Please complete the sponsor section below. The applicant's information is shown for reference.</p>
+            </div>
+
+            <div class="cison-fs__applicant-info">
+                <h4>Applicant Information</h4>
+                <div class="cison-fs__info-grid">
+                    <div><strong>Name:</strong> <?php echo esc_html(cison_fellowship_get_full_name($application)); ?></div>
+                    <div><strong>Email:</strong> <?php echo esc_html($application['email']); ?></div>
+                    <div><strong>Phone:</strong> <?php echo esc_html($application['phone']); ?></div>
+                    <div><strong>Reference:</strong> <?php echo esc_html($application['reference_number']); ?></div>
+                </div>
+            </div>
+
+            <form method="post" class="cison-fs__form" novalidate>
+                <?php wp_nonce_field('cison_fellowship_sponsor_action', 'cison_fellowship_sponsor_nonce'); ?>
+                <input type="hidden" name="sponsor_token" value="<?php echo esc_attr($token); ?>">
+                <input type="hidden" name="cison_fellowship_sponsor_submit" value="1">
+
+                <?php if ($view_status === 's1'): ?>
+                    <div class="cison-fs__section">
+                        <h4>Sponsor 1 Details</h4>
+                        <?php echo cison_fellowship_render_sponsor_fields(1, $sponsor_1_data, true); ?>
+                    </div>
+
+                    <div class="cison-fs__section cison-fs__section--locked">
+                        <h4>Sponsor 2</h4>
+                        <p class="cison-fs__locked-notice">Sponsor 2 section will be available after Sponsor 1 submits.</p>
+                    </div>
+
+                <?php elseif ($view_status === 's2'): ?>
+                    <div class="cison-fs__section cison-fs__section--locked">
+                        <h4>Sponsor 1 <span class="cison-fs__badge cison-fs__badge--submitted">Submitted</span></h4>
+                        <div class="cison-fs__info-grid">
+                            <div><strong>Name:</strong> <?php echo esc_html($sponsor_1_data['name'] ?? ''); ?></div>
+                            <div><strong>Email:</strong> <?php echo esc_html($sponsor_1_data['email'] ?? ''); ?></div>
+                            <div><strong>Organization:</strong> <?php echo esc_html($sponsor_1_data['organization'] ?? ''); ?></div>
+                            <div><strong>Relationship:</strong> <?php echo esc_html($sponsor_1_data['relationship'] ?? ''); ?></div>
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__section">
+                        <h4>Sponsor 2 Details</h4>
+                        <?php echo cison_fellowship_render_sponsor_fields(2, $sponsor_2_data, true); ?>
+                    </div>
+                <?php endif; ?>
+
+                <button type="submit" class="cison-fs__submit">
+                    Submit Sponsor Endorsement
+                </button>
+            </form>
+
+        <?php else: ?>
+            <div class="cison-fs__header">
+                <h3>CISON Fellowship Application</h3>
+                <p>Complete the form below to apply for CISON Fellowship.</p>
+            </div>
+
+            <?php if ($feedback_message): ?>
+                <div class="cison-fs__alert cison-fs__alert--<?php echo esc_attr($feedback_type); ?>">
+                    <?php echo esc_html($feedback_message); ?>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" class="cison-fs__form" enctype="multipart/form-data" novalidate>
+                <?php wp_nonce_field('cison_fellowship_action', 'cison_fellowship_nonce'); ?>
+                <input type="hidden" name="cison_fellowship_submit" value="1">
+
+                <div class="cison-fs__section cison-fs__section--membership">
+                    <h4>Present Membership Status in CISON</h4>
+                    <p class="cison-fs__help">If you are a non-member, you may qualify for honorary fellowship.</p>
+                    <div class="cison-fs__grid cison-fs__grid--two">
+                        <div>
+                            <label for="cison_fs_member_status">Are you a CISON Member? <span>*</span></label>
+                            <select id="cison_fs_member_status" name="membership_status" required>
+                                <option value="">Select</option>
+                                <option value="member" <?php selected($values['membership_status'], 'member'); ?>>Member</option>
+                                <option value="non-member" <?php selected($values['membership_status'], 'non-member'); ?>>Non-Member</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__nsa-fellow-wrap js-nsa-fellow-wrap" style="<?php echo $is_member ? '' : 'display:none;'; ?>">
+                        <div class="cison-fs__grid cison-fs__grid--two">
+                            <div>
+                                <label for="cison_fs_nsa_fellow">Are you an NSA Fellow? <span>*</span></label>
+                                <select id="cison_fs_nsa_fellow" name="nsa_fellow">
+                                    <option value="">Select</option>
+                                    <option value="yes" <?php selected($values['nsa_fellow'], 'yes'); ?>>Yes</option>
+                                    <option value="no" <?php selected($values['nsa_fellow'], 'no'); ?>>No</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cison-fs__section">
+                    <h4>Personal Information</h4>
+                    <div class="cison-fs__grid cison-fs__grid--two">
+                        <div>
+                            <label for="cison_fs_title">Title <span>*</span></label>
+                            <select id="cison_fs_title" name="title" required>
+                                <option value="">Select</option>
+                                <?php foreach ($titles as $t): ?>
+                                    <option value="<?php echo esc_attr($t); ?>" <?php selected($values['title'], $t); ?>><?php echo esc_html($t); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid cison-fs__grid--three">
+                        <div>
+                            <label for="cison_fs_first_name">First Name <span>*</span></label>
+                            <input id="cison_fs_first_name" type="text" name="first_name" value="<?php echo esc_attr($values['first_name']); ?>" required>
+                        </div>
+                        <div>
+                            <label for="cison_fs_middle_name">Middle Name</label>
+                            <input id="cison_fs_middle_name" type="text" name="middle_name" value="<?php echo esc_attr($values['middle_name']); ?>">
+                        </div>
+                        <div>
+                            <label for="cison_fs_last_name">Last Name <span>*</span></label>
+                            <input id="cison_fs_last_name" type="text" name="last_name" value="<?php echo esc_attr($values['last_name']); ?>" required>
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid cison-fs__grid--two">
+                        <div>
+                            <label for="cison_fs_email">Email Address <span>*</span></label>
+                            <input id="cison_fs_email" type="email" name="email" value="<?php echo esc_attr($values['email']); ?>" required>
+                        </div>
+                        <div>
+                            <label for="cison_fs_phone">Phone Number <span>*</span></label>
+                            <input id="cison_fs_phone" type="tel" name="phone" value="<?php echo esc_attr($values['phone']); ?>" required>
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid cison-fs__grid--two">
+                        <div>
+                            <label for="cison_fs_gender">Gender</label>
+                            <select id="cison_fs_gender" name="gender">
+                                <option value="">Select</option>
+                                <?php foreach ($genders as $g): ?>
+                                    <option value="<?php echo esc_attr($g); ?>" <?php selected($values['gender'], $g); ?>><?php echo esc_html($g); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="cison_fs_dob">Date of Birth</label>
+                            <input id="cison_fs_dob" type="date" name="date_of_birth" value="<?php echo esc_attr($values['date_of_birth']); ?>">
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid cison-fs__grid--two">
+                        <div>
+                            <label for="cison_fs_nationality">Nationality</label>
+                            <input id="cison_fs_nationality" type="text" name="nationality" value="<?php echo esc_attr($values['nationality']); ?>">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cison-fs__section">
+                    <h4>Residential Address</h4>
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_street">Street Address</label>
+                            <input id="cison_fs_street" type="text" name="street" value="<?php echo esc_attr($values['street']); ?>" placeholder="House number and street name">
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid cison-fs__grid--three">
+                        <div>
+                            <label for="cison_fs_city">City</label>
+                            <input id="cison_fs_city" type="text" name="city" value="<?php echo esc_attr($values['city']); ?>">
+                        </div>
+                        <div>
+                            <label for="cison_fs_country">Country</label>
+                            <select id="cison_fs_country" name="country">
+                                <?php foreach ($countries as $code => $label): ?>
+                                    <option value="<?php echo esc_attr($code); ?>" <?php selected($values['country'], $code); ?>><?php echo esc_html($label); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="js-state-select-wrap" style="<?php echo $is_nigeria ? '' : 'display:none;'; ?>">
+                            <label for="cison_fs_state">State</label>
+                            <select id="cison_fs_state" name="state" <?php echo $is_nigeria ? '' : 'disabled'; ?>>
+                                <option value="">Select</option>
+                                <?php foreach ($nigerian_states as $state): ?>
+                                    <option value="<?php echo esc_attr($state); ?>" <?php selected($values['state'], $state); ?>><?php echo esc_html($state); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="js-state-manual-wrap" style="<?php echo $is_nigeria ? 'display:none;' : ''; ?>">
+                            <label for="cison_fs_state_manual">State / Region</label>
+                            <input id="cison_fs_state_manual" type="text" name="state_manual" value="<?php echo esc_attr($manual_state_value); ?>" <?php echo $is_nigeria ? 'disabled' : ''; ?>>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cison-fs__section">
+                    <h4>Professional Information</h4>
+                    <div class="cison-fs__grid cison-fs__grid--two">
+                        <div>
+                            <label for="cison_fs_occupation">Current Occupation <span>*</span></label>
+                            <input id="cison_fs_occupation" type="text" name="occupation" value="<?php echo esc_attr($values['occupation']); ?>" required>
+                        </div>
+                        <div>
+                            <label for="cison_fs_designation">Designation</label>
+                            <input id="cison_fs_designation" type="text" name="designation" value="<?php echo esc_attr($values['designation']); ?>">
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_employer">Employer / Institution</label>
+                            <input id="cison_fs_employer" type="text" name="employer" value="<?php echo esc_attr($values['employer']); ?>">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cison-fs__section js-form-section" data-section="additional">
+                    <h4>Additional Information</h4>
+                    <div class="cison-fs__grid cison-fs__grid--two">
+                        <div>
+                            <label for="cison_fs_years">Years of Practice</label>
+                            <input id="cison_fs_years" type="text" name="years_of_practice" value="<?php echo esc_attr($values['years_of_practice']); ?>">
+                        </div>
+                        <div>
+                            <label for="cison_fs_member_number">CISON Member Number</label>
+                            <input id="cison_fs_member_number" type="text" name="membership_number" value="<?php echo esc_attr($values['membership_number']); ?>">
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_area">Area of Statistics</label>
+                            <textarea id="cison_fs_area" name="area_of_practice" rows="3"><?php echo esc_textarea($values['area_of_practice']); ?></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cison-fs__section js-form-section" data-section="membership-details">
+                    <h4>Membership Details</h4>
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_member_category">Membership Category</label>
+                            <select id="cison_fs_member_category" name="membership_category">
+                                <option value="">Select</option>
+                                <?php foreach ($categories as $cat): ?>
+                                    <option value="<?php echo esc_attr($cat); ?>" <?php selected($values['membership_category'], $cat); ?>><?php echo esc_html($cat); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cison-fs__section js-form-section" data-section="qualifications">
+                    <h4>Academic & Professional Background</h4>
+
+                    <div class="cison-fs__qualifications">
+                        <label>Academic Qualifications</label>
+                        <div id="cison-fs-quals" class="cison-fs__quals-list">
+                            <?php
+                            $quals = $values['academic_qualifications'];
+                            if (empty($quals)) {
+                                $quals = array(array('institution' => '', 'degree' => '', 'year' => ''));
+                            }
+                            foreach ($quals as $i => $qual):
+                            ?>
+                            <div class="cison-fs__qual-row">
+                                <input type="text" name="academic_qualifications[<?php echo $i; ?>][institution]" placeholder="Institution" value="<?php echo esc_attr($qual['institution'] ?? ''); ?>">
+                                <input type="text" name="academic_qualifications[<?php echo $i; ?>][degree]" placeholder="Degree / Qualification" value="<?php echo esc_attr($qual['degree'] ?? ''); ?>">
+                                <input type="text" name="academic_qualifications[<?php echo $i; ?>][year]" placeholder="Year" value="<?php echo esc_attr($qual['year'] ?? ''); ?>" class="cison-fs__qual-year">
+                                <button type="button" class="cison-fs__qual-remove" title="Remove">&times;</button>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" id="cison-fs-add-qual" class="cison-fs__qual-add">+ Add Qualification</button>
+                    </div>
+
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_experience">Professional Experience</label>
+                            <textarea id="cison_fs_experience" name="professional_experience" rows="4"><?php echo esc_textarea($values['professional_experience']); ?></textarea>
+                        </div>
+                    </div>
+
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_publications">Publications, Research and Contribution</label>
+                            <textarea id="cison_fs_publications" name="publications" rows="4"><?php echo esc_textarea($values['publications']); ?></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <?php if ($has_valid_token): ?>
+                <div class="cison-fs__section js-form-section" data-section="sponsors">
+                    <h4>Sponsors</h4>
+                    <p class="cison-fs__help">You need two sponsors to endorse your application. Their details are required below.</p>
+
+                    <div class="cison-fs__sponsor-group">
+                        <h5>Sponsor 1</h5>
+                        <?php echo cison_fellowship_render_sponsor_fields(1, array(
+                            'name' => $values['sponsor_1_name'],
+                            'email' => $values['sponsor_1_email'],
+                            'phone' => $values['sponsor_1_phone'],
+                            'organization' => $values['sponsor_1_organization'],
+                            'relationship' => $values['sponsor_1_relationship'],
+                        ), true); ?>
+                    </div>
+
+                    <div class="cison-fs__sponsor-group">
+                        <h5>Sponsor 2</h5>
+                        <?php echo cison_fellowship_render_sponsor_fields(2, array(
+                            'name' => $values['sponsor_2_name'],
+                            'email' => $values['sponsor_2_email'],
+                            'phone' => $values['sponsor_2_phone'],
+                            'organization' => $values['sponsor_2_organization'],
+                            'relationship' => $values['sponsor_2_relationship'],
+                        ), true); ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <div class="cison-fs__section">
+                    <h4>Signature</h4>
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_signature">Upload Signature (Image)</label>
+                            <input id="cison_fs_signature" type="file" name="signature" accept="image/*">
+                            <span class="cison-fs__help">Accepted formats: JPG, PNG, GIF. Max size: 2MB.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="cison-fs__submit">
+                    Submit Application &amp; Proceed to Payment
+                </button>
+            </form>
+        <?php endif; ?>
+    </div>
+
+    <?php echo cison_fellowship_render_styles(); ?>
+    <?php echo cison_fellowship_render_scripts($is_member, $is_nsa_fellow); ?>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('cison_fellowship_application', 'cison_fellowship_form_shortcode');
+
+function cison_fellowship_render_sponsor_fields($num, $data, $editable)
+{
+    $readonly_attr = $editable ? '' : 'readonly';
+    $disabled_attr = $editable ? '' : 'disabled';
+    $d = array_merge(array(
+        'name' => '', 'email' => '', 'phone' => '',
+        'organization' => '', 'relationship' => '',
+    ), $data);
+
+    ob_start();
+    ?>
+    <div class="cison-fs__grid cison-fs__grid--three">
+        <div>
+            <label for="cison_fs_s<?php echo $num; ?>_name">Full Name <span>*</span></label>
+            <input id="cison_fs_s<?php echo $num; ?>_name" type="text" name="sponsor_<?php echo $num; ?>_name" value="<?php echo esc_attr($d['name']); ?>" <?php echo $editable ? 'required' : ''; ?> <?php echo $readonly_attr; ?>>
+        </div>
+        <div>
+            <label for="cison_fs_s<?php echo $num; ?>_email">Email <span>*</span></label>
+            <input id="cison_fs_s<?php echo $num; ?>_email" type="email" name="sponsor_<?php echo $num; ?>_email" value="<?php echo esc_attr($d['email']); ?>" <?php echo $editable ? 'required' : ''; ?> <?php echo $readonly_attr; ?>>
+        </div>
+        <div>
+            <label for="cison_fs_s<?php echo $num; ?>_phone">Phone</label>
+            <input id="cison_fs_s<?php echo $num; ?>_phone" type="text" name="sponsor_<?php echo $num; ?>_phone" value="<?php echo esc_attr($d['phone']); ?>" <?php echo $readonly_attr; ?>>
+        </div>
+    </div>
+    <div class="cison-fs__grid cison-fs__grid--two">
+        <div>
+            <label for="cison_fs_s<?php echo $num; ?>_org">Organization</label>
+            <input id="cison_fs_s<?php echo $num; ?>_org" type="text" name="sponsor_<?php echo $num; ?>_organization" value="<?php echo esc_attr($d['organization']); ?>" <?php echo $readonly_attr; ?>>
+        </div>
+        <div>
+            <label for="cison_fs_s<?php echo $num; ?>_rel">Relationship to Applicant</label>
+            <input id="cison_fs_s<?php echo $num; ?>_rel" type="text" name="sponsor_<?php echo $num; ?>_relationship" value="<?php echo esc_attr($d['relationship']); ?>" <?php echo $readonly_attr; ?>>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+// ============================================================
+// SHORTCODE: ADMIN SUBMISSIONS VIEWER
+// ============================================================
+
+function cison_fellowship_submissions_shortcode($atts)
+{
+    if (!current_user_can('manage_options')) {
+        return '<p>You do not have permission to view fellowship submissions.</p>';
     }
 
-    function refreshSponsorCount() {
-        // Sponsor 2 appears only after Sponsor 1 is fully completed.
-        setSponsorCount(sponsor1Complete() ? 2 : 1);
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name)) !== $table_name) {
+        return '<p style="color:red;">Error: Fellowship submissions table not found.</p>';
     }
 
-    // 1. Lock every field except the sponsorship sections when opened via the
-    //    sponsor link.
-    if (isSponsorView) {
-        $('.gfield').each(function() {
-            var id = getFieldId($(this));
-            if (SPONSOR_FIELDS.indexOf(id) !== -1) {
-                return;
+    $atts = shortcode_atts(array('per_page' => 20), $atts);
+
+    $search = isset($_GET['fs_s']) ? sanitize_text_field(wp_unslash($_GET['fs_s'])) : '';
+    $filter_key = 'fs_filter_payment_status';
+    $filter_value = isset($_GET[$filter_key]) ? sanitize_text_field(wp_unslash($_GET[$filter_key])) : '';
+    $paged = isset($_GET['fs_paged']) ? max(1, intval($_GET['fs_paged'])) : 1;
+    $per_page = max(1, intval($atts['per_page']));
+    $offset = ($paged - 1) * $per_page;
+
+    $where_clauses = array('1=1');
+    $query_params = array();
+
+    if ($search) {
+        $search_term = '%' . $wpdb->esc_like($search) . '%';
+        $where_clauses[] = '(reference_number LIKE %s OR first_name LIKE %s OR last_name LIKE %s OR email LIKE %s OR phone LIKE %s)';
+        for ($i = 0; $i < 5; $i++) {
+            $query_params[] = $search_term;
+        }
+    }
+
+    if ($filter_value) {
+        $where_clauses[] = 'payment_status = %s';
+        $query_params[] = $filter_value;
+    }
+
+    $where_sql = implode(' AND ', $where_clauses);
+
+    $count_query = "SELECT COUNT(*) FROM $table_name WHERE $where_sql";
+    if ($query_params) {
+        $count_query = $wpdb->prepare($count_query, $query_params);
+    }
+    $total_items = (int) $wpdb->get_var($count_query);
+    $total_pages = max(1, (int) ceil($total_items / $per_page));
+
+    $query_params_with_paging = array_merge($query_params, array($per_page, $offset));
+    $query = $wpdb->prepare(
+        "SELECT * FROM $table_name WHERE $where_sql ORDER BY registration_date DESC LIMIT %d OFFSET %d",
+        $query_params_with_paging
+    );
+    $results = $wpdb->get_results($query, ARRAY_A);
+    $filter_options = $wpdb->get_col("SELECT DISTINCT payment_status FROM $table_name WHERE payment_status != '' ORDER BY payment_status ASC");
+
+    ob_start();
+    ?>
+    <div class="cison-fs-submissions">
+        <div class="cison-fs-submissions__controls">
+            <form method="get" class="cison-fs-submissions__search">
+                <input type="text" name="fs_s" value="<?php echo esc_attr($search); ?>" placeholder="Search by name, email, reference...">
+                <button type="submit">Search</button>
+                <?php if ($search || $filter_value): ?>
+                    <a href="<?php echo esc_url(remove_query_arg(array('fs_s', 'fs_paged', $filter_key))); ?>">Clear</a>
+                <?php endif; ?>
+            </form>
+
+            <form method="get" class="cison-fs-submissions__filter">
+                <select name="<?php echo esc_attr($filter_key); ?>" onchange="this.form.submit()">
+                    <option value="">All Payment Status</option>
+                    <?php foreach ($filter_options as $option): ?>
+                        <option value="<?php echo esc_attr($option); ?>" <?php selected($filter_value, $option); ?>><?php echo esc_html($option); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="hidden" name="fs_s" value="<?php echo esc_attr($search); ?>">
+            </form>
+        </div>
+
+        <div class="cison-fs-submissions__table-wrap">
+            <table class="cison-fs-submissions__table">
+                <thead>
+                    <tr>
+                        <th>Reference</th>
+                        <th>Applicant</th>
+                        <th>Email</th>
+                        <th>Membership</th>
+                        <th>Sponsor 1</th>
+                        <th>Sponsor 2</th>
+                        <th>Payment</th>
+                        <th>Submitted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($results): ?>
+                        <?php foreach ($results as $row): ?>
+                            <?php
+                            $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
+                            $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
+                            ?>
+                            <tr>
+                                <td><?php echo esc_html($row['reference_number'] ?: 'N/A'); ?></td>
+                                <td>
+                                    <strong><?php echo esc_html(cison_fellowship_get_full_name($row)); ?></strong><br>
+                                    <small><?php echo esc_html($row['phone'] ?: ''); ?></small>
+                                </td>
+                                <td><?php echo esc_html($row['email']); ?></td>
+                                <td><?php echo esc_html($row['is_member'] ?: 'N/A'); ?></td>
+                                <td>
+                                    <?php echo cison_fellowship_render_status_badge($row['sponsor_1_status'] ?? 'pending'); ?>
+                                    <?php if (!empty($s1_data['name'])): ?>
+                                        <br><small><?php echo esc_html($s1_data['name']); ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php echo cison_fellowship_render_status_badge($row['sponsor_2_status'] ?? 'pending'); ?>
+                                    <?php if (!empty($s2_data['name'])): ?>
+                                        <br><small><?php echo esc_html($s2_data['name']); ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo cison_fellowship_render_status_badge($row['payment_status']); ?></td>
+                                <td><?php echo esc_html(date_i18n('M j, Y g:i a', strtotime($row['registration_date']))); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr><td colspan="8">No fellowship submissions found.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <?php if ($total_pages > 1): ?>
+            <div class="cison-fs-submissions__pagination">
+                <?php
+                echo paginate_links(array(
+                    'base' => add_query_arg('fs_paged', '%#%'),
+                    'format' => '',
+                    'total' => $total_pages,
+                    'current' => $paged,
+                    'prev_text' => '&laquo;',
+                    'next_text' => '&raquo;',
+                    'add_args' => array(
+                        'fs_s' => $search,
+                        $filter_key => $filter_value,
+                    ),
+                ));
+                ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <?php echo cison_fellowship_submissions_styles(); ?>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('cison_fellowship_submissions', 'cison_fellowship_submissions_shortcode');
+
+// ============================================================
+// STYLES
+// ============================================================
+
+function cison_fellowship_render_styles()
+{
+    return '
+    <style>
+        .cison-fs {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 24px;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            background: #ffffff;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+        }
+
+        .cison-fs__header {
+            margin-bottom: 24px;
+        }
+
+        .cison-fs__header h3 {
+            margin: 0 0 8px;
+            font-size: 1.8rem;
+            color: #0f172a;
+        }
+
+        .cison-fs__header p {
+            margin: 0;
+            color: #475569;
+        }
+
+        .cison-fs__alert {
+            margin-bottom: 20px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        .cison-fs__alert--success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .cison-fs__alert--error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .cison-fs__section {
+            margin-bottom: 28px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .cison-fs__section:last-of-type {
+            border-bottom: none;
+        }
+
+        .cison-fs__section h4 {
+            margin: 0 0 16px;
+            font-size: 1.2rem;
+            color: #0f172a;
+        }
+
+        .cison-fs__section h5 {
+            margin: 0 0 12px;
+            font-size: 1rem;
+            color: #334155;
+        }
+
+        .cison-fs__form label {
+            display: block;
+            margin-bottom: 6px;
+            color: #0f172a;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .cison-fs__form label span {
+            color: #dc2626;
+        }
+
+        .cison-fs__help {
+            margin: 0 0 16px;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .cison-fs__grid {
+            display: grid;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .cison-fs__grid--two {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .cison-fs__grid--three {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .cison-fs__form input,
+        .cison-fs__form select,
+        .cison-fs__form textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #0f172a;
+            background: #fff;
+            box-sizing: border-box;
+        }
+
+        .cison-fs__form input[readonly],
+        .cison-fs__form textarea[readonly] {
+            background: #f8fafc;
+            color: #64748b;
+            cursor: not-allowed;
+        }
+
+        .cison-fs__submit {
+            display: block;
+            width: 100%;
+            border: 0;
+            border-radius: 999px;
+            padding: 14px 22px;
+            font-size: 15px;
+            font-weight: 700;
+            color: #ffffff;
+            background: #0f766e;
+            cursor: pointer;
+            margin-top: 16px;
+        }
+
+        .cison-fs__submit:hover {
+            background: #115e59;
+        }
+
+        .cison-fs__applicant-info {
+            margin-bottom: 24px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .cison-fs__applicant-info h4 {
+            margin: 0 0 12px;
+            font-size: 1rem;
+            color: #334155;
+        }
+
+        .cison-fs__info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .cison-fs__info-grid div {
+            font-size: 14px;
+            color: #475569;
+        }
+
+        .cison-fs__section--locked {
+            opacity: 0.6;
+        }
+
+        .cison-fs__locked-notice {
+            color: #64748b;
+            font-style: italic;
+        }
+
+        .cison-fs__badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .cison-fs__badge--submitted {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .cison-fs__badge--pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .cison-fs__sponsor-group {
+            margin-bottom: 20px;
+            padding: 16px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+        }
+
+        .cison-fs__qualifications {
+            margin-bottom: 16px;
+        }
+
+        .cison-fs__qualifications > label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #0f172a;
+            font-size: 14px;
+        }
+
+        .cison-fs__quals-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .cison-fs__qual-row {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .cison-fs__qual-row input {
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .cison-fs__qual-year {
+            max-width: 80px;
+        }
+
+        .cison-fs__qual-remove {
+            width: 28px;
+            height: 28px;
+            border: 0;
+            border-radius: 6px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cison-fs__qual-remove:hover {
+            background: #fecaca;
+        }
+
+        .cison-fs__qual-add {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 6px 12px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 6px;
+            background: transparent;
+            color: #0f766e;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cison-fs__qual-add:hover {
+            border-color: #0f766e;
+            background: #f0fdfa;
+        }
+
+        .cison-fs__nsa-fellow-wrap {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #f1f5f9;
+        }
+
+        @media (max-width: 768px) {
+            .cison-fs__grid--two,
+            .cison-fs__grid--three {
+                grid-template-columns: 1fr;
             }
-            $(this).find('input, select, textarea, button').each(function() {
-                var tag = $(this).prop('tagName').toLowerCase();
-                if (tag === 'select' || tag === 'button' || $(this).hasClass('gfield-choice-input')) {
-                    $(this).prop('disabled', true).attr('disabled', 'disabled');
-                } else {
-                    $(this).prop('readonly', true).attr('readonly', 'readonly');
+
+            .cison-fs__qual-row {
+                grid-template-columns: 1fr;
+            }
+
+            .cison-fs__qual-year {
+                max-width: none;
+            }
+
+            .cison-fs__info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>';
+}
+
+function cison_fellowship_submissions_styles()
+{
+    return '
+    <style>
+        .cison-fs-submissions {
+            margin: 24px 0;
+        }
+
+        .cison-fs-submissions__controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .cison-fs-submissions__search,
+        .cison-fs-submissions__filter {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .cison-fs-submissions input,
+        .cison-fs-submissions select,
+        .cison-fs-submissions button {
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+        }
+
+        .cison-fs-submissions button {
+            border: 0;
+            background: #0f766e;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .cison-fs-submissions__table-wrap {
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: #fff;
+        }
+
+        .cison-fs-submissions__table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .cison-fs-submissions__table th,
+        .cison-fs-submissions__table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .cison-fs-submissions__table th {
+            background: #f8fafc;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .cison-fs-submissions__pagination {
+            margin-top: 18px;
+        }
+
+        .cison-fs-submissions__pagination .page-numbers {
+            display: inline-block;
+            margin-right: 8px;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+
+        .cison-fs-submissions__pagination .current {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #fff;
+        }
+
+        .cison-fs-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: capitalize;
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+
+        .cison-fs-badge--submitted,
+        .cison-fs-badge--paid {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .cison-fs-badge--pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .cison-fs-badge--rejected,
+        .cison-fs-badge--failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>';
+}
+
+// ============================================================
+// JAVASCRIPT
+// ============================================================
+
+function cison_fellowship_render_scripts($is_member = false, $is_nsa_fellow = false)
+{
+    ob_start();
+    ?>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var container = document.querySelector(".cison-fs");
+        if (!container) return;
+
+        var hasToken = container.getAttribute("data-has-token") === "1";
+
+        // State field toggle
+        var countrySelect = container.querySelector("[name='country']");
+        var stateSelectWrap = container.querySelector(".js-state-select-wrap");
+        var stateSelect = container.querySelector("[name='state']");
+        var stateManualWrap = container.querySelector(".js-state-manual-wrap");
+        var stateManual = container.querySelector("[name='state_manual']");
+
+        function toggleState() {
+            var isNigeria = countrySelect && countrySelect.value === "NG";
+            if (stateSelectWrap) stateSelectWrap.style.display = isNigeria ? "" : "none";
+            if (stateManualWrap) stateManualWrap.style.display = isNigeria ? "none" : "";
+            if (stateSelect) {
+                stateSelect.disabled = !isNigeria;
+                if (!isNigeria) stateSelect.value = "";
+            }
+            if (stateManual) {
+                stateManual.disabled = isNigeria;
+                if (isNigeria) stateManual.value = "";
+            }
+        }
+        if (countrySelect) countrySelect.addEventListener("change", toggleState);
+        toggleState();
+
+        // Conditional form flow based on membership and NSA fellow status
+        var memberStatus = container.querySelector("[name='membership_status']");
+        var nsaFellow = container.querySelector("[name='nsa_fellow']");
+        var nsaFellowWrap = container.querySelector(".js-nsa-fellow-wrap");
+        var formSections = container.querySelectorAll(".js-form-section");
+
+        function toggleFormSections() {
+            var status = memberStatus ? memberStatus.value : "";
+            var isMember = status === "member";
+            var isNonMember = status === "non-member";
+
+            // Show/hide NSA Fellow question
+            if (nsaFellowWrap) {
+                nsaFellowWrap.style.display = isMember ? "" : "none";
+            }
+            if (nsaFellow) {
+                nsaFellow.disabled = !isMember;
+                if (!isMember) nsaFellow.value = "";
+            }
+
+            // Determine if additional form sections should be visible
+            var showSections = false;
+
+            if (isNonMember) {
+                showSections = false;
+            } else if (isMember) {
+                if (nsaFellow && nsaFellow.value === "yes") {
+                    showSections = false;
+                } else if (nsaFellow && nsaFellow.value === "no") {
+                    showSections = true;
+                }
+            }
+
+            // Toggle additional form sections
+            formSections.forEach(function(section) {
+                var sectionName = section.getAttribute("data-section");
+                if (sectionName === "sponsors" && !hasToken) {
+                    section.style.display = "none";
+                    return;
+                }
+                section.style.display = showSections ? "" : "none";
+            });
+        }
+
+        if (memberStatus) memberStatus.addEventListener("change", toggleFormSections);
+        if (nsaFellow) nsaFellow.addEventListener("change", toggleFormSections);
+        toggleFormSections();
+
+        // Qualifications add/remove
+        var qualsList = container.querySelector("#cison-fs-quals");
+        var addQualBtn = container.querySelector("#cison-fs-add-qual");
+
+        function updateQualIndices() {
+            if (!qualsList) return;
+            var rows = qualsList.querySelectorAll(".cison-fs__qual-row");
+            rows.forEach(function(row, i) {
+                row.querySelectorAll("input").forEach(function(input) {
+                    var name = input.getAttribute("name");
+                    if (name) {
+                        input.setAttribute("name", name.replace(/academic_qualifications\[\d+\]/, "academic_qualifications[" + i + "]"));
+                    }
+                });
+            });
+        }
+
+        if (addQualBtn) {
+            addQualBtn.addEventListener("click", function() {
+                var row = document.createElement("div");
+                row.className = "cison-fs__qual-row";
+                var idx = qualsList.querySelectorAll(".cison-fs__qual-row").length;
+                row.innerHTML = '<input type="text" name="academic_qualifications[' + idx + '][institution]" placeholder="Institution">' +
+                    '<input type="text" name="academic_qualifications[' + idx + '][degree]" placeholder="Degree / Qualification">' +
+                    '<input type="text" name="academic_qualifications[' + idx + '][year]" placeholder="Year" class="cison-fs__qual-year">' +
+                    '<button type="button" class="cison-fs__qual-remove" title="Remove">&times;</button>';
+                qualsList.appendChild(row);
+            });
+        }
+
+        if (qualsList) {
+            qualsList.addEventListener("click", function(e) {
+                if (e.target.classList.contains("cison-fs__qual-remove")) {
+                    var row = e.target.closest(".cison-fs__qual-row");
+                    if (row) {
+                        row.remove();
+                        updateQualIndices();
+                    }
                 }
             });
-        });
-    }
-
-    // 2. On load, reveal Sponsor 1 (number of sponsors = 1). Sponsor 2 appears
-    //    (auto-increments to 2) once Sponsor 1 is fully completed.
-    refreshSponsorCount();
-    $(document).on('change input', '.gfield', refreshSponsorCount);
-});
-JS;
+        }
+    });
+    </script>
+    <?php
+    return ob_get_clean();
 }

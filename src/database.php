@@ -339,6 +339,50 @@ function create_fellowship_registration_table()
     dbDelta($sql);
 }
 
+function alter_fellowship_registration_table()
+{
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'cison_fellowship_registrations';
+    $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+
+    if ($table_exists !== $table_name) {
+        return;
+    }
+
+    $columns = $wpdb->get_col("DESC $table_name", 0);
+    $alter_clauses = array();
+
+    if (!in_array('sponsor_token', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN sponsor_token varchar(64) DEFAULT '' AFTER ip_address";
+    }
+
+    if (!in_array('sponsor_1_status', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN sponsor_1_status varchar(20) DEFAULT 'pending' AFTER sponsor_token";
+    }
+
+    if (!in_array('sponsor_1_data', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN sponsor_1_data longtext NULL AFTER sponsor_1_status";
+    }
+
+    if (!in_array('sponsor_2_status', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN sponsor_2_status varchar(20) DEFAULT 'pending' AFTER sponsor_1_data";
+    }
+
+    if (!in_array('sponsor_2_data', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN sponsor_2_data longtext NULL AFTER sponsor_2_status";
+    }
+
+    if ($alter_clauses) {
+        $wpdb->query("ALTER TABLE $table_name " . implode(', ', $alter_clauses));
+    }
+
+    $token_index = $wpdb->get_var("SHOW INDEX FROM $table_name WHERE Key_name = 'sponsor_token'");
+    if (!$token_index) {
+        $wpdb->query("ALTER TABLE $table_name ADD KEY sponsor_token (sponsor_token)");
+    }
+}
+
 function create_databases()
 {
     global $wpdb;
@@ -348,6 +392,7 @@ function create_databases()
     create_examination_registration_table();
     alter_examination_registration_table();
     create_fellowship_registration_table();
+    alter_fellowship_registration_table();
     bbc_create_certificates_table();
     bbc_create_student_upgrade_table();
     evp_initialize_election_database();
