@@ -64,15 +64,17 @@ function cison_fellowship_get_form_defaults()
         'professional_experience' => '',
         'publications' => '',
         'sponsor_1_name' => '',
-        'sponsor_1_email' => '',
-        'sponsor_1_phone' => '',
-        'sponsor_1_organization' => '',
-        'sponsor_1_relationship' => '',
+        'sponsor_1_membership_id' => '',
+        'sponsor_1_membership_status' => '',
+        'sponsor_1_rank' => '',
+        'sponsor_1_signature' => '',
+        'sponsor_1_date' => '',
         'sponsor_2_name' => '',
-        'sponsor_2_email' => '',
-        'sponsor_2_phone' => '',
-        'sponsor_2_organization' => '',
-        'sponsor_2_relationship' => '',
+        'sponsor_2_membership_id' => '',
+        'sponsor_2_membership_status' => '',
+        'sponsor_2_rank' => '',
+        'sponsor_2_signature' => '',
+        'sponsor_2_date' => '',
     );
 }
 
@@ -130,10 +132,10 @@ function cison_fellowship_sanitize($data)
         'state', 'state_manual', 'country', 'membership_status',
         'membership_category', 'membership_number', 'nsa_fellow',
         'professional_experience', 'publications',
-        'sponsor_1_name', 'sponsor_1_phone', 'sponsor_1_organization',
-        'sponsor_1_relationship',
-        'sponsor_2_name', 'sponsor_2_phone', 'sponsor_2_organization',
-        'sponsor_2_relationship',
+        'sponsor_1_name', 'sponsor_1_membership_id', 'sponsor_1_membership_status',
+        'sponsor_1_rank', 'sponsor_1_date',
+        'sponsor_2_name', 'sponsor_2_membership_id', 'sponsor_2_membership_status',
+        'sponsor_2_rank', 'sponsor_2_date',
     );
 
     foreach ($text_fields as $field) {
@@ -141,8 +143,6 @@ function cison_fellowship_sanitize($data)
     }
 
     $sanitized['email'] = isset($data['email']) ? sanitize_email(wp_unslash($data['email'])) : '';
-    $sanitized['sponsor_1_email'] = isset($data['sponsor_1_email']) ? sanitize_email(wp_unslash($data['sponsor_1_email'])) : '';
-    $sanitized['sponsor_2_email'] = isset($data['sponsor_2_email']) ? sanitize_email(wp_unslash($data['sponsor_2_email'])) : '';
     $sanitized['date_of_birth'] = isset($data['date_of_birth']) ? sanitize_text_field(wp_unslash($data['date_of_birth'])) : '';
 
     $sanitized['academic_qualifications'] = array();
@@ -155,6 +155,38 @@ function cison_fellowship_sanitize($data)
     }
 
     return $sanitized;
+}
+
+function cison_fellowship_handle_sponsor_signature_upload($sponsor_num)
+{
+    $field_name = "sponsor_{$sponsor_num}_signature";
+    
+    if (empty($_FILES[$field_name]) || $_FILES[$field_name]['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $file = $_FILES[$field_name];
+    $allowed_types = array('image/jpeg', 'image/png', 'image/gif', 'image/webp');
+    
+    if (!in_array($file['type'], $allowed_types)) {
+        return null;
+    }
+
+    $upload_dir = wp_upload_dir();
+    $sponsor_dir = $upload_dir['path'] . '/fellowship_sponsors';
+    
+    if (!file_exists($sponsor_dir)) {
+        wp_mkdir_p($sponsor_dir);
+    }
+
+    $filename = 'sponsor_' . $sponsor_num . '_' . time() . '_' . sanitize_file_name($file['name']);
+    $filepath = $sponsor_dir . '/' . $filename;
+    
+    if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        return $upload_dir['url'] . '/fellowship_sponsors/' . $filename;
+    }
+
+    return null;
 }
 
 function cison_fellowship_validate($data)
@@ -188,8 +220,19 @@ function cison_fellowship_validate_sponsor($data, $sponsor_num)
     if (empty($data[$prefix . 'name'])) {
         $errors[] = "Sponsor {$sponsor_num} name is required.";
     }
-    if (empty($data[$prefix . 'email']) || !is_email($data[$prefix . 'email'])) {
-        $errors[] = "A valid email address is required for sponsor {$sponsor_num}.";
+    if (empty($data[$prefix . 'membership_id'])) {
+        $errors[] = "Sponsor {$sponsor_num} membership ID is required.";
+    }
+    if (empty($data[$prefix . 'membership_status'])) {
+        $errors[] = "Sponsor {$sponsor_num} membership status is required.";
+    }
+    if (empty($data[$prefix . 'date'])) {
+        $errors[] = "Sponsor {$sponsor_num} date is required.";
+    }
+    
+    // Check signature upload for sponsor
+    if (empty($_FILES["sponsor_{$sponsor_num}_signature"]) || $_FILES["sponsor_{$sponsor_num}_signature"]['error'] !== UPLOAD_ERR_OK) {
+        $errors[] = "Sponsor {$sponsor_num} signature is required.";
     }
 
     return $errors;
@@ -383,12 +426,19 @@ function cison_fellowship_handle_sponsor_submission()
             return;
         }
 
+        // Handle signature upload
+        $signature_url = cison_fellowship_handle_sponsor_signature_upload(1);
+        if ($signature_url) {
+            $data['sponsor_1_signature'] = $signature_url;
+        }
+
         $sponsor_data = json_encode(array(
             'name' => $data['sponsor_1_name'],
-            'email' => $data['sponsor_1_email'],
-            'phone' => $data['sponsor_1_phone'],
-            'organization' => $data['sponsor_1_organization'],
-            'relationship' => $data['sponsor_1_relationship'],
+            'membership_id' => $data['sponsor_1_membership_id'],
+            'membership_status' => $data['sponsor_1_membership_status'],
+            'rank' => $data['sponsor_1_rank'],
+            'signature' => $data['sponsor_1_signature'] ?? '',
+            'date' => $data['sponsor_1_date'],
         ));
 
         $wpdb->update(
@@ -408,12 +458,19 @@ function cison_fellowship_handle_sponsor_submission()
             return;
         }
 
+        // Handle signature upload
+        $signature_url = cison_fellowship_handle_sponsor_signature_upload(2);
+        if ($signature_url) {
+            $data['sponsor_2_signature'] = $signature_url;
+        }
+
         $sponsor_data = json_encode(array(
             'name' => $data['sponsor_2_name'],
-            'email' => $data['sponsor_2_email'],
-            'phone' => $data['sponsor_2_phone'],
-            'organization' => $data['sponsor_2_organization'],
-            'relationship' => $data['sponsor_2_relationship'],
+            'membership_id' => $data['sponsor_2_membership_id'],
+            'membership_status' => $data['sponsor_2_membership_status'],
+            'rank' => $data['sponsor_2_rank'],
+            'signature' => $data['sponsor_2_signature'] ?? '',
+            'date' => $data['sponsor_2_date'],
         ));
 
         $wpdb->update(
@@ -544,35 +601,7 @@ function cison_fellowship_send_applicant_email($data, $token)
 
     $headers = array('Content-Type: text/html; charset=UTF-8');
 
-    add_filter('wp_mail', 'cison_fellowship_add_plain_text_alt', 10, 1);
     wp_mail($email, $subject, $message_html, $headers);
-    remove_filter('wp_mail', 'cison_fellowship_add_plain_text_alt', 10);
-}
-
-function cison_fellowship_add_plain_text_alt($atts)
-{
-    if (!isset($atts['message'])) {
-        return $atts;
-    }
-
-    $html = $atts['message'];
-    $plain = wp_strip_all_tags($html, true);
-    $plain = preg_replace("/\n{3,}/", "\n\n", $plain);
-
-    $atts['headers'][] = 'MIME-Version: 1.0';
-    $atts['headers'][] = 'Content-Type: multipart/alternative; boundary=cison_fellowship_boundary';
-
-    $body = "--cison_fellowship_boundary\r\n"
-        . "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
-        . $plain . "\r\n\r\n"
-        . "--cison_fellowship_boundary\r\n"
-        . "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-        . $html . "\r\n\r\n"
-        . "--cison_fellowship_boundary--";
-
-    $atts['message'] = $body;
-
-    return $atts;
 }
 
 // ============================================================
@@ -664,7 +693,7 @@ function cison_fellowship_form_shortcode()
                 </div>
             </div>
 
-            <form method="post" class="cison-fs__form" novalidate>
+            <form method="post" class="cison-fs__form" enctype="multipart/form-data" novalidate>
                 <?php wp_nonce_field('cison_fellowship_sponsor_action', 'cison_fellowship_sponsor_nonce'); ?>
                 <input type="hidden" name="sponsor_token" value="<?php echo esc_attr($token); ?>">
                 <input type="hidden" name="cison_fellowship_sponsor_submit" value="1">
@@ -685,9 +714,13 @@ function cison_fellowship_form_shortcode()
                         <h4>Sponsor 1 <span class="cison-fs__badge cison-fs__badge--submitted">Submitted</span></h4>
                         <div class="cison-fs__info-grid">
                             <div><strong>Name:</strong> <?php echo esc_html($sponsor_1_data['name'] ?? ''); ?></div>
-                            <div><strong>Email:</strong> <?php echo esc_html($sponsor_1_data['email'] ?? ''); ?></div>
-                            <div><strong>Organization:</strong> <?php echo esc_html($sponsor_1_data['organization'] ?? ''); ?></div>
-                            <div><strong>Relationship:</strong> <?php echo esc_html($sponsor_1_data['relationship'] ?? ''); ?></div>
+                            <div><strong>Membership ID:</strong> <?php echo esc_html($sponsor_1_data['membership_id'] ?? ''); ?></div>
+                            <div><strong>Membership Status:</strong> <?php echo esc_html($sponsor_1_data['membership_status'] ?? ''); ?></div>
+                            <div><strong>Rank:</strong> <?php echo esc_html($sponsor_1_data['rank'] ?? ''); ?></div>
+                            <div><strong>Date:</strong> <?php echo esc_html($sponsor_1_data['date'] ?? ''); ?></div>
+                            <?php if (!empty($sponsor_1_data['signature'])): ?>
+                                <div><strong>Signature:</strong> <a href="<?php echo esc_url($sponsor_1_data['signature']); ?>" target="_blank">View Signature</a></div>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -1003,34 +1036,51 @@ function cison_fellowship_render_sponsor_fields($num, $data, $editable)
     $readonly_attr = $editable ? '' : 'readonly';
     $disabled_attr = $editable ? '' : 'disabled';
     $d = array_merge(array(
-        'name' => '', 'email' => '', 'phone' => '',
-        'organization' => '', 'relationship' => '',
+        'name' => '', 'membership_id' => '', 'membership_status' => '',
+        'rank' => '', 'signature' => '', 'date' => '',
     ), $data);
 
     ob_start();
     ?>
-    <div class="cison-fs__grid cison-fs__grid--three">
+    <div class="cison-fs__grid">
         <div>
             <label for="cison_fs_s<?php echo $num; ?>_name">Full Name <span>*</span></label>
             <input id="cison_fs_s<?php echo $num; ?>_name" type="text" name="sponsor_<?php echo $num; ?>_name" value="<?php echo esc_attr($d['name']); ?>" <?php echo $editable ? 'required' : ''; ?> <?php echo $readonly_attr; ?>>
         </div>
+    </div>
+    <div class="cison-fs__grid cison-fs__grid--two">
         <div>
-            <label for="cison_fs_s<?php echo $num; ?>_email">Email <span>*</span></label>
-            <input id="cison_fs_s<?php echo $num; ?>_email" type="email" name="sponsor_<?php echo $num; ?>_email" value="<?php echo esc_attr($d['email']); ?>" <?php echo $editable ? 'required' : ''; ?> <?php echo $readonly_attr; ?>>
+            <label for="cison_fs_s<?php echo $num; ?>_membership_id">Membership ID <span>*</span></label>
+            <input id="cison_fs_s<?php echo $num; ?>_membership_id" type="text" name="sponsor_<?php echo $num; ?>_membership_id" value="<?php echo esc_attr($d['membership_id']); ?>" <?php echo $editable ? 'required' : ''; ?> <?php echo $readonly_attr; ?>>
         </div>
         <div>
-            <label for="cison_fs_s<?php echo $num; ?>_phone">Phone</label>
-            <input id="cison_fs_s<?php echo $num; ?>_phone" type="text" name="sponsor_<?php echo $num; ?>_phone" value="<?php echo esc_attr($d['phone']); ?>" <?php echo $readonly_attr; ?>>
+            <label for="cison_fs_s<?php echo $num; ?>_membership_status">Membership Status <span>*</span></label>
+            <select id="cison_fs_s<?php echo $num; ?>_membership_status" name="sponsor_<?php echo $num; ?>_membership_status" <?php echo $editable ? 'required' : 'disabled'; ?>>
+                <option value="">Select</option>
+                <option value="Fellow" <?php selected($d['membership_status'], 'Fellow'); ?>>Fellow</option>
+                <option value="Chartered Statistician" <?php selected($d['membership_status'], 'Chartered Statistician'); ?>>Chartered Statistician</option>
+                <option value="Member" <?php selected($d['membership_status'], 'Member'); ?>>Member</option>
+                <option value="Associate" <?php selected($d['membership_status'], 'Associate'); ?>>Associate</option>
+            </select>
         </div>
     </div>
     <div class="cison-fs__grid cison-fs__grid--two">
         <div>
-            <label for="cison_fs_s<?php echo $num; ?>_org">Organization</label>
-            <input id="cison_fs_s<?php echo $num; ?>_org" type="text" name="sponsor_<?php echo $num; ?>_organization" value="<?php echo esc_attr($d['organization']); ?>" <?php echo $readonly_attr; ?>>
+            <label for="cison_fs_s<?php echo $num; ?>_rank">Rank</label>
+            <input id="cison_fs_s<?php echo $num; ?>_rank" type="text" name="sponsor_<?php echo $num; ?>_rank" value="<?php echo esc_attr($d['rank']); ?>" <?php echo $readonly_attr; ?>>
         </div>
         <div>
-            <label for="cison_fs_s<?php echo $num; ?>_rel">Relationship to Applicant</label>
-            <input id="cison_fs_s<?php echo $num; ?>_rel" type="text" name="sponsor_<?php echo $num; ?>_relationship" value="<?php echo esc_attr($d['relationship']); ?>" <?php echo $readonly_attr; ?>>
+            <label for="cison_fs_s<?php echo $num; ?>_signature">Signature (Image) <span>*</span></label>
+            <input id="cison_fs_s<?php echo $num; ?>_signature" type="file" name="sponsor_<?php echo $num; ?>_signature" accept="image/*" <?php echo $editable ? 'required' : 'disabled'; ?>>
+            <?php if (!empty($d['signature'])): ?>
+                <span class="cison-fs__help">Current: <a href="<?php echo esc_url($d['signature']); ?>" target="_blank">View Signature</a></span>
+            <?php endif; ?>
+        </div>
+    </div>
+    <div class="cison-fs__grid">
+        <div>
+            <label for="cison_fs_s<?php echo $num; ?>_date">Date <span>*</span></label>
+            <input id="cison_fs_s<?php echo $num; ?>_date" type="date" name="sponsor_<?php echo $num; ?>_date" value="<?php echo esc_attr($d['date']); ?>" <?php echo $editable ? 'required' : ''; ?> <?php echo $readonly_attr; ?>>
         </div>
     </div>
     <?php
