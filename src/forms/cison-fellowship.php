@@ -1057,10 +1057,9 @@ function cison_fellowship_render_sponsor_fields($num, $data, $editable)
             <label for="cison_fs_s<?php echo $num; ?>_membership_status">Membership Status <span>*</span></label>
             <select id="cison_fs_s<?php echo $num; ?>_membership_status" name="sponsor_<?php echo $num; ?>_membership_status" <?php echo $editable ? 'required' : 'disabled'; ?>>
                 <option value="">Select</option>
-                <option value="Fellow" <?php selected($d['membership_status'], 'Fellow'); ?>>Fellow</option>
+                <option value="Registered Statistician" <?php selected($d['membership_status'], 'Registered Statistician'); ?>>Registered Statistician</option>
+                <option value="Associate Statistician" <?php selected($d['membership_status'], 'Associate Statistician'); ?>>Associate Statistician</option>
                 <option value="Chartered Statistician" <?php selected($d['membership_status'], 'Chartered Statistician'); ?>>Chartered Statistician</option>
-                <option value="Member" <?php selected($d['membership_status'], 'Member'); ?>>Member</option>
-                <option value="Associate" <?php selected($d['membership_status'], 'Associate'); ?>>Associate</option>
             </select>
         </div>
     </div>
