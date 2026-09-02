@@ -703,7 +703,7 @@ function cison_fellowship_form_shortcode()
 
         <?php else: ?>
             <div class="cison-fs__header">
-                <h3>CISON Fellowship Application</h3>
+                <!-- <h3>CISON Fellowship Application</h3> -->
                 <p>Complete the form below to apply for CISON Fellowship.</p>
             </div>
 
