@@ -89,10 +89,9 @@ function cison_fellowship_get_genders()
 function cison_fellowship_get_membership_categories()
 {
     return array(
-        'Fellow',
+        'Registered Statistician',
+        'Associate Statistician',
         'Chartered Statistician',
-        'Member',
-        'Associate',
     );
 }
 
