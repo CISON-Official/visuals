@@ -10,6 +10,7 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
+        '/donation/',
         '/fellowship-application/',
         '/2026-conference-and-preconference-registration/',
         '/q3-prs-student-registration/',
