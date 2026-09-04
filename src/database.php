@@ -383,6 +383,91 @@ function alter_fellowship_registration_table()
     }
 }
 
+function create_donations_table()
+{
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'cison_donations';
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $table_name (
+        id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+        donor_name varchar(200) NOT NULL,
+        donor_email varchar(100) DEFAULT '',
+        donor_phone varchar(30) DEFAULT '',
+        donation_amount decimal(12,2) NOT NULL DEFAULT 0,
+        what_they_like text NOT NULL,
+        what_they_want text NOT NULL,
+        billing_address_1 varchar(200) DEFAULT '',
+        billing_address_2 varchar(200) DEFAULT '',
+        billing_city varchar(100) DEFAULT '',
+        billing_state varchar(100) DEFAULT '',
+        billing_postcode varchar(20) DEFAULT '',
+        billing_country varchar(2) DEFAULT 'NG',
+        donation_date datetime DEFAULT CURRENT_TIMESTAMP,
+        user_id bigint(20) DEFAULT 0,
+        order_id bigint(20) DEFAULT 0,
+        payment_status varchar(20) DEFAULT 'pending',
+        PRIMARY KEY (id),
+        KEY user_id (user_id),
+        KEY order_id (order_id),
+        KEY donation_date (donation_date)
+    ) $charset_collate;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+}
+
+function alter_donations_table()
+{
+    global $wpdb;
+
+    $table_name = $wpdb->prefix . 'cison_donations';
+    $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+
+    if ($table_exists !== $table_name) {
+        return;
+    }
+
+    $columns = $wpdb->get_col("DESC $table_name", 0);
+    $alter_clauses = array();
+
+    if (!in_array('donor_email', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN donor_email varchar(100) DEFAULT '' AFTER donor_name";
+    }
+    if (!in_array('donor_phone', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN donor_phone varchar(30) DEFAULT '' AFTER donor_email";
+    }
+    if (!in_array('billing_address_1', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN billing_address_1 varchar(200) DEFAULT '' AFTER what_they_want";
+    }
+    if (!in_array('billing_address_2', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN billing_address_2 varchar(200) DEFAULT '' AFTER billing_address_1";
+    }
+    if (!in_array('billing_city', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN billing_city varchar(100) DEFAULT '' AFTER billing_address_2";
+    }
+    if (!in_array('billing_state', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN billing_state varchar(100) DEFAULT '' AFTER billing_city";
+    }
+    if (!in_array('billing_postcode', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN billing_postcode varchar(20) DEFAULT '' AFTER billing_state";
+    }
+    if (!in_array('billing_country', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN billing_country varchar(2) DEFAULT 'NG' AFTER billing_postcode";
+    }
+    if (!in_array('order_id', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN order_id bigint(20) DEFAULT 0 AFTER user_id";
+    }
+    if (!in_array('payment_status', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN payment_status varchar(20) DEFAULT 'pending' AFTER order_id";
+    }
+
+    if ($alter_clauses) {
+        $wpdb->query("ALTER TABLE $table_name " . implode(', ', $alter_clauses));
+    }
+}
+
 function create_databases()
 {
     global $wpdb;
@@ -396,4 +481,6 @@ function create_databases()
     bbc_create_certificates_table();
     bbc_create_student_upgrade_table();
     evp_initialize_election_database();
+    create_donations_table();
+    alter_donations_table();
 }
