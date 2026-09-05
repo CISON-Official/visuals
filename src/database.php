@@ -296,6 +296,7 @@ function create_fellowship_registration_table()
         order_id bigint(20) unsigned DEFAULT 0,
         is_member varchar(10) NOT NULL DEFAULT '',
         is_nsa_fellow varchar(10) NOT NULL DEFAULT '',
+        nsa_fellow_id varchar(50) DEFAULT '',
         membership_category varchar(50) DEFAULT '',
         membership_number varchar(30) DEFAULT '',
         title varchar(20) DEFAULT '',
@@ -355,6 +356,10 @@ function alter_fellowship_registration_table()
 
     if (!in_array('sponsor_token', $columns, true)) {
         $alter_clauses[] = "ADD COLUMN sponsor_token varchar(64) DEFAULT '' AFTER ip_address";
+    }
+
+    if (!in_array('nsa_fellow_id', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN nsa_fellow_id varchar(50) DEFAULT '' AFTER is_nsa_fellow";
     }
 
     if (!in_array('sponsor_1_status', $columns, true)) {
