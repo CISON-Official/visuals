@@ -248,23 +248,18 @@ function cison_fellowship_validate($data)
     global $wpdb;
     $table_name = cison_fellowship_get_table_name();
 
-    if ($is_member) {
-        $member_id = trim($data['membership_number'] ?? '');
-        if (!$is_nsa_fellow) {
-            if (empty($member_id)) {
-                $errors[] = 'CISON membership number is required.';
-            }
-        }
-        if (!empty($member_id)) {
-            // Check the member ID exists in BuddyPress profile field 894.
-            if (!cison_fellowship_member_id_exists($member_id)) {
-                $errors[] = 'The CISON membership number is not recognized. Please check it and try again.';
-            } elseif ($wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM $table_name WHERE membership_number = %s AND membership_number != '' LIMIT 1",
-                $member_id
-            ))) {
-                $errors[] = 'This CISON membership number has already been used for a fellowship application.';
-            }
+    $member_id = trim($data['membership_number'] ?? '');
+    if (empty($member_id)) {
+        $errors[] = 'CISON membership number is required.';
+    } else {
+        // Check the member ID exists in BuddyPress profile field 894.
+        if (!cison_fellowship_member_id_exists($member_id)) {
+            $errors[] = 'The CISON membership number is not recognized. Please check it and try again.';
+        } elseif ($wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table_name WHERE membership_number = %s AND membership_number != '' LIMIT 1",
+            $member_id
+        ))) {
+            $errors[] = 'This CISON membership number has already been used for a fellowship application.';
         }
     }
 
@@ -282,6 +277,11 @@ function cison_fellowship_validate($data)
             ))) {
                 $errors[] = 'This NSA fellow ID has already been used for a fellowship application.';
             }
+        }
+
+        $outstanding_fee_error = cison_fellowship_get_outstanding_fee_error($member_id);
+        if ($outstanding_fee_error !== '') {
+            $errors[] = $outstanding_fee_error;
         }
     }
 
@@ -304,6 +304,43 @@ function cison_fellowship_member_id_exists($member_id)
     ));
 
     return !empty($user_id);
+}
+
+function cison_fellowship_get_outstanding_fee_error($member_id)
+{
+    if (
+        !function_exists('bp_get_userid_by_profile_field')
+        || !function_exists('bp_get_member_type')
+        || !function_exists('cison_get_required_fees')
+        || !function_exists('cison_get_paid_fees')
+        || !function_exists('cison_get_unpaid_fees')
+    ) {
+        return '';
+    }
+
+    $user_id = bp_get_userid_by_profile_field(894, $member_id);
+    if (empty($user_id)) {
+        return '';
+    }
+
+    $member_type_bp = bp_get_member_type($user_id);
+    $is_student = $member_type_bp === 'student-member';
+    $is_corporate = $member_type_bp === 'corporate-member';
+
+    $reg_year = (int) substr($member_id, 0, 4);
+    if ($reg_year < 1900) {
+        return '';
+    }
+
+    $required = cison_get_required_fees(true, $reg_year, $is_student, $is_corporate);
+    $paid = cison_get_paid_fees($user_id);
+    $unpaid = cison_get_unpaid_fees($required, $paid);
+
+    if (!empty($unpaid)) {
+        return 'You have outstanding fees. Please clear all outstanding dues before applying as a transiting (NSA) fellow.';
+    }
+
+    return '';
 }
 
 function cison_fellowship_validate_sponsor($data, $sponsor_num)
@@ -1039,8 +1076,8 @@ function cison_fellowship_form_shortcode()
                             <input id="cison_fs_years" type="text" name="years_of_practice" value="<?php echo esc_attr($values['years_of_practice']); ?>">
                         </div>
                         <div>
-                            <label for="cison_fs_member_number">CISON Member Number <?php echo ($is_member && !$is_nsa_fellow) ? '<span>*</span>' : ''; ?></label>
-                            <input id="cison_fs_member_number" type="text" name="membership_number" value="<?php echo esc_attr($values['membership_number']); ?>" <?php echo ($is_member && !$is_nsa_fellow) ? 'required' : ''; ?>>
+                            <label for="cison_fs_member_number">CISON Member Number <span>*</span></label>
+                            <input id="cison_fs_member_number" type="text" name="membership_number" value="<?php echo esc_attr($values['membership_number']); ?>" required>
                         </div>
                     </div>
 
@@ -1902,15 +1939,10 @@ function cison_fellowship_render_scripts($is_member = false, $is_nsa_fellow = fa
                 section.style.display = showSections ? "" : "none";
             });
 
-            // CISON member number is required for members who are not NSA fellows
+            // CISON member number is required for all applicants
             var memberNumberInput = container.querySelector("[name='membership_number']");
             if (memberNumberInput) {
-                var memberNumberRequired = isMember && !isNsaFellowYes;
-                if (memberNumberRequired) {
-                    memberNumberInput.setAttribute("required", "required");
-                } else {
-                    memberNumberInput.removeAttribute("required");
-                }
+                memberNumberInput.setAttribute("required", "required");
             }
         }
 
