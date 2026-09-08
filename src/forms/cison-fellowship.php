@@ -2068,7 +2068,7 @@ function cison_fellowship_submission_detail_shortcode()
                 tab.classList.toggle("is-active", match === activeTab);
             });
             source.style.display = isSource ? "" : "none";
-            preview.style.display = isSource ? "none" : "";
+            preview.style.display = isSource ? "none" : "block";
             if (!isSource) {
                 renderPreview();
             } else {
