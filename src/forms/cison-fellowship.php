@@ -1355,9 +1355,8 @@ function cison_fellowship_submissions_shortcode($atts)
                             $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
                             $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
                             ?>
-                            <tr>
-                                <td><?php echo esc_html($row['reference_number'] ?: 'N/A'); ?></td>
-                                <td>
+                            <tr style="cursor:pointer;" onclick="window.location='<?php echo esc_url(add_query_arg('fs_ref', rawurlencode($row['reference_number'] ?? ''))); ?>';">
+                                <td><a href="<?php echo esc_url(add_query_arg('fs_ref', rawurlencode($row['reference_number'] ?? ''))); ?>" style="color:#0f766e;font-weight:700;text-decoration:none;"><?php echo esc_html($row['reference_number'] ?: 'N/A'); ?></a></td>
                                     <strong><?php echo esc_html(cison_fellowship_get_full_name($row)); ?></strong><br>
                                     <small><?php echo esc_html($row['phone'] ?: ''); ?></small>
                                 </td>
@@ -1418,6 +1417,315 @@ function cison_fellowship_submissions_shortcode($atts)
     return ob_get_clean();
 }
 add_shortcode('cison_fellowship_submissions', 'cison_fellowship_submissions_shortcode');
+
+// ============================================================
+// SHORTCODE: ADMIN SUBMISSION DETAIL
+// ============================================================
+
+function cison_fellowship_submission_detail_shortcode()
+{
+    if (!current_user_can('manage_options')) {
+        return '<p>You do not have permission to view fellowship submissions.</p>';
+    }
+
+    $ref = isset($_GET['fs_ref']) ? sanitize_text_field(wp_unslash($_GET['fs_ref'])) : '';
+    if (empty($ref)) {
+        return '<p>No reference number provided.</p>';
+    }
+
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM $table_name WHERE reference_number = %s LIMIT 1", $ref),
+        ARRAY_A
+    );
+
+    if (!$row) {
+        return '<p>No submission found for reference: ' . esc_html($ref) . '</p>';
+    }
+
+    $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
+    $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
+    $quals = !empty($row['academic_qualifications']) ? explode("\n", $row['academic_qualifications']) : array();
+
+    $back_url = remove_query_arg('fs_ref');
+
+    ob_start();
+    ?>
+    <div class="cison-fs-detail">
+        <div class="cison-fs-detail__nav">
+            <a href="<?php echo esc_url($back_url); ?>">&larr; Back to Submissions</a>
+        </div>
+
+        <div class="cison-fs-detail__header">
+            <h3>Submission Details</h3>
+            <div class="cison-fs-detail__ref">
+                Reference: <strong><?php echo esc_html($row['reference_number']); ?></strong>
+            </div>
+        </div>
+
+        <div class="cison-fs-detail__grid">
+            <div class="cison-fs-detail__card">
+                <h4>Personal Information</h4>
+                <div class="cison-fs-detail__fields">
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Full Name</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html(cison_fellowship_get_full_name($row)); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Title</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['title'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Email</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['email']); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Phone</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['phone'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Gender</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['gender'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Date of Birth</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['date_of_birth'] ? date_i18n('M j, Y', strtotime($row['date_of_birth'])) : 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Nationality</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['nationality'] ?: 'N/A'); ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Residential Address</h4>
+                <div class="cison-fs-detail__fields">
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Street</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['street'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">City</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['city'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">State</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['state'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Country</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['country'] ?: 'N/A'); ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Professional Information</h4>
+                <div class="cison-fs-detail__fields">
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Occupation</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['occupation'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Designation</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['designation'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Employer / Institution</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['employer'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Years of Practice</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['years_of_practice'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Area of Statistics</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['area_of_practice'] ?: 'N/A'); ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Membership Details</h4>
+                <div class="cison-fs-detail__fields">
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Status</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['is_member'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Category</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['membership_category'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Member Number</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['membership_number'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">NSA Fellow</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html(($row['is_nsa_fellow'] ?? '') ?: 'N/A'); ?></span>
+                    </div>
+                    <?php if (!empty($row['nsa_fellow_id'])): ?>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">NSA Fellow ID</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['nsa_fellow_id']); ?></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Academic Qualifications</h4>
+                <?php if (!empty($quals)): ?>
+                    <table class="cison-fs-detail__quals-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($quals as $i => $line): ?>
+                                <tr>
+                                    <td><?php echo ($i + 1); ?></td>
+                                    <td><?php echo esc_html($line); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else: ?>
+                    <p class="cison-fs-detail__empty">No qualifications listed.</p>
+                <?php endif; ?>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Professional Experience</h4>
+                <div class="cison-fs-detail__text-block">
+                    <?php echo esc_html($row['professional_experience'] ?: 'No details provided.'); ?>
+                </div>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Publications, Research &amp; Contribution</h4>
+                <div class="cison-fs-detail__text-block">
+                    <?php echo esc_html($row['publications'] ?: 'No details provided.'); ?>
+                </div>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Sponsor 1 — <?php echo cison_fellowship_render_status_badge($row['sponsor_1_status'] ?? 'pending'); ?></h4>
+                <?php if (!empty($s1_data)): ?>
+                    <div class="cison-fs-detail__fields">
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Full Name</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s1_data['name'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Membership ID</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s1_data['membership_id'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Membership Status</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s1_data['membership_status'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Rank</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s1_data['rank'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Date</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s1_data['date'] ?? 'N/A'); ?></span>
+                        </div>
+                        <?php if (!empty($s1_data['signature'])): ?>
+                            <div class="cison-fs-detail__field">
+                                <span class="cison-fs-detail__label">Signature</span>
+                                <span class="cison-fs-detail__value"><a href="<?php echo esc_url($s1_data['signature']); ?>" target="_blank">View Signature</a></span>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <p class="cison-fs-detail__empty">Awaiting sponsor endorsement.</p>
+                <?php endif; ?>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Sponsor 2 — <?php echo cison_fellowship_render_status_badge($row['sponsor_2_status'] ?? 'pending'); ?></h4>
+                <?php if (!empty($s2_data)): ?>
+                    <div class="cison-fs-detail__fields">
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Full Name</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s2_data['name'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Membership ID</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s2_data['membership_id'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Membership Status</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s2_data['membership_status'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Rank</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s2_data['rank'] ?? 'N/A'); ?></span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Date</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($s2_data['date'] ?? 'N/A'); ?></span>
+                        </div>
+                        <?php if (!empty($s2_data['signature'])): ?>
+                            <div class="cison-fs-detail__field">
+                                <span class="cison-fs-detail__label">Signature</span>
+                                <span class="cison-fs-detail__value"><a href="<?php echo esc_url($s2_data['signature']); ?>" target="_blank">View Signature</a></span>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <p class="cison-fs-detail__empty">Awaiting sponsor endorsement.</p>
+                <?php endif; ?>
+            </div>
+
+            <div class="cison-fs-detail__card cison-fs-detail__card--meta">
+                <h4>Submission Metadata</h4>
+                <div class="cison-fs-detail__fields">
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Payment Status</span>
+                        <span class="cison-fs-detail__value"><?php echo cison_fellowship_render_status_badge($row['payment_status']); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Application Status</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['application_status'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Product IDs</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['product_ids'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Order ID</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['order_id'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">IP Address</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html($row['ip_address'] ?: 'N/A'); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Registered</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html(date_i18n('M j, Y g:i a', strtotime($row['registration_date']))); ?></span>
+                    </div>
+                    <div class="cison-fs-detail__field">
+                        <span class="cison-fs-detail__label">Last Updated</span>
+                        <span class="cison-fs-detail__value"><?php echo esc_html(date_i18n('M j, Y g:i a', strtotime($row['updated_at']))); ?></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php echo cison_fellowship_submission_detail_styles(); ?>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('cison_fellowship_submission_detail', 'cison_fellowship_submission_detail_shortcode');
 
 // ============================================================
 // STYLES
@@ -1792,6 +2100,14 @@ function cison_fellowship_submissions_styles()
             letter-spacing: 0.04em;
         }
 
+        .cison-fs-submissions__table tbody tr {
+            transition: background 0.15s ease;
+        }
+
+        .cison-fs-submissions__table tbody tr:hover {
+            background: #f0fdfa;
+        }
+
         .cison-fs-submissions__pagination {
             margin-top: 18px;
         }
@@ -1838,6 +2154,167 @@ function cison_fellowship_submissions_styles()
         .cison-fs-badge--failed {
             background: #fee2e2;
             color: #991b1b;
+        }
+    </style>';
+}
+
+function cison_fellowship_submission_detail_styles()
+{
+    return '
+    <style>
+        .cison-fs-detail {
+            margin: 24px 0;
+        }
+
+        .cison-fs-detail__nav {
+            margin-bottom: 16px;
+        }
+
+        .cison-fs-detail__nav a {
+            color: #0f766e;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .cison-fs-detail__nav a:hover {
+            text-decoration: underline;
+        }
+
+        .cison-fs-detail__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .cison-fs-detail__header h3 {
+            margin: 0;
+            font-size: 1.6rem;
+            color: #0f172a;
+        }
+
+        .cison-fs-detail__ref {
+            color: #475569;
+            font-size: 14px;
+        }
+
+        .cison-fs-detail__grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .cison-fs-detail__card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 18px 20px;
+        }
+
+        .cison-fs-detail__card h4 {
+            margin: 0 0 14px;
+            font-size: 1.05rem;
+            color: #0f172a;
+        }
+
+        .cison-fs-detail__fields {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .cison-fs-detail__field {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #e2e8f0;
+            font-size: 14px;
+        }
+
+        .cison-fs-detail__field:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .cison-fs-detail__label {
+            color: #64748b;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .cison-fs-detail__value {
+            color: #0f172a;
+            text-align: right;
+            word-break: break-word;
+        }
+
+        .cison-fs-detail__text-block {
+            font-size: 14px;
+            color: #334155;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .cison-fs-detail__empty {
+            color: #94a3b8;
+            font-style: italic;
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .cison-fs-detail__quals-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .cison-fs-detail__quals-table th,
+        .cison-fs-detail__quals-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .cison-fs-detail__quals-table th {
+            background: #f8fafc;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .cison-fs-detail__card--meta {
+            grid-column: 1 / -1;
+        }
+
+        .cison-fs-detail__card--meta .cison-fs-detail__fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px 24px;
+        }
+
+        @media (max-width: 768px) {
+            .cison-fs-detail__grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cison-fs-detail__card--meta .cison-fs-detail__fields {
+                grid-template-columns: 1fr;
+            }
+
+            .cison-fs-detail__field {
+                flex-direction: column;
+                gap: 2px;
+            }
+
+            .cison-fs-detail__value {
+                text-align: left;
+            }
         }
     </style>';
 }
