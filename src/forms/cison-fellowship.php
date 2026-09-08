@@ -2010,7 +2010,7 @@ function cison_fellowship_submission_detail_shortcode()
             <div class="cison-fs-detail__card cison-fs-detail__card--meta cison-fs-detail__card--email">
                 <h4>Email This Submission</h4>
                 <p class="cison-fs-detail__help">
-                    Send this submission's details to one or more recipients. Separate multiple email addresses with commas (e.g. a@example.com, b@example.com).
+                    Send this submission's details to one or more recipients. Separate multiple email addresses with commas (e.g. a@example.com, b@example.com). Applicant and sponsor signatures are attached automatically.
                 </p>
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="cison-fs-detail__email-form">
                     <input type="hidden" name="action" value="cison_fellowship_email_submission">
@@ -2018,24 +2018,29 @@ function cison_fellowship_submission_detail_shortcode()
                     <input type="hidden" name="cison_fellowship_email_submit" value="1">
                     <input type="hidden" name="fs_ref" value="<?php echo esc_attr($row['reference_number']); ?>">
 
-                    <div class="cison-fs-detail__fields">
-                        <div class="cison-fs-detail__field">
-                            <span class="cison-fs-detail__label">To</span>
-                            <span class="cison-fs-detail__value">
-                                <input type="text" name="cison_fellowship_email_to" value="<?php echo esc_attr(strtolower($row['email'])); ?>" class="cison-fs-detail__input" required>
-                            </span>
+                    <div class="cison-fs-detail__email-cols">
+                        <div class="cison-fs-detail__email-settings">
+                            <div class="cison-fs-detail__email-field">
+                                <label for="cison_fs_email_to">To</label>
+                                <input id="cison_fs_email_to" type="text" name="cison_fellowship_email_to" value="<?php echo esc_attr(strtolower($row['email'])); ?>" class="cison-fs-detail__input" required>
+                                <span class="cison-fs-detail__hint">Separate multiple email addresses with commas.</span>
+                            </div>
+                            <div class="cison-fs-detail__email-field">
+                                <label for="cison_fs_email_subject">Subject</label>
+                                <input id="cison_fs_email_subject" type="text" name="cison_fellowship_email_subject" value="Fellowship Submission <?php echo esc_attr($row['reference_number']); ?>" class="cison-fs-detail__input" required>
+                            </div>
                         </div>
-                        <div class="cison-fs-detail__field">
-                            <span class="cison-fs-detail__label">Subject</span>
-                            <span class="cison-fs-detail__value">
-                                <input type="text" name="cison_fellowship_email_subject" value="Fellowship Submission <?php echo esc_attr($row['reference_number']); ?>" class="cison-fs-detail__input" required>
-                            </span>
-                        </div>
-                        <div class="cison-fs-detail__field">
-                            <span class="cison-fs-detail__label">Message</span>
-                            <span class="cison-fs-detail__value">
-                                <textarea name="cison_fellowship_email_message" rows="5" class="cison-fs-detail__input" required><?php echo esc_textarea(cison_fellowship_build_submission_summary($row)); ?></textarea>
-                            </span>
+
+                        <div class="cison-fs-detail__email-message">
+                            <div class="cison-fs-detail__email-field">
+                                <label>Message</label>
+                                <div class="cison-fs-detail__tabs">
+                                    <button type="button" class="cison-fs-detail__tab is-active" data-tab="preview">Preview</button>
+                                    <button type="button" class="cison-fs-detail__tab" data-tab="source">Edit HTML</button>
+                                </div>
+                                <div class="cison-fs-detail__preview js-email-preview"></div>
+                                <textarea id="cison_fs_email_message" name="cison_fellowship_email_message" rows="12" class="cison-fs-detail__input js-email-source" required><?php echo esc_textarea(cison_fellowship_build_submission_summary($row)); ?></textarea>
+                            </div>
                         </div>
                     </div>
 
@@ -2045,6 +2050,42 @@ function cison_fellowship_submission_detail_shortcode()
         </div>
     </div>
     <?php echo cison_fellowship_submission_detail_styles(); ?>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var preview = document.querySelector(".js-email-preview");
+        var source = document.querySelector(".js-email-source");
+        var tabs = document.querySelectorAll(".cison-fs-detail__tab");
+        if (!preview || !source) return;
+
+        function renderPreview() {
+            preview.innerHTML = source.value;
+        }
+
+        function setTab(activeTab) {
+            var isSource = activeTab === "source";
+            tabs.forEach(function(tab) {
+                var match = tab.getAttribute("data-tab");
+                tab.classList.toggle("is-active", match === activeTab);
+            });
+            source.style.display = isSource ? "" : "none";
+            preview.style.display = isSource ? "none" : "";
+            if (!isSource) {
+                renderPreview();
+            } else {
+                source.focus();
+            }
+        }
+
+        tabs.forEach(function(tab) {
+            tab.addEventListener("click", function() {
+                setTab(tab.getAttribute("data-tab"));
+            });
+        });
+
+        source.addEventListener("input", renderPreview);
+        setTab("preview");
+    });
+    </script>
     <?php
     return ob_get_clean();
 }
@@ -2654,6 +2695,83 @@ function cison_fellowship_submission_detail_styles()
             flex-direction: column;
         }
 
+        .cison-fs-detail__email-cols {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 24px;
+            margin-bottom: 8px;
+        }
+
+        .cison-fs-detail__email-field {
+            margin-bottom: 16px;
+        }
+
+        .cison-fs-detail__email-field label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            color: #0f172a;
+        }
+
+        .cison-fs-detail__hint {
+            display: block;
+            margin-top: 6px;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .cison-fs-detail__tabs {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .cison-fs-detail__tab {
+            padding: 6px 14px;
+            border: 1px solid #cbd5e1;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cison-fs-detail__tab:hover {
+            border-color: #0f766e;
+        }
+
+        .cison-fs-detail__tab.is-active {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #ffffff;
+        }
+
+        .cison-fs-detail__preview {
+            display: none;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 16px;
+            background: #ffffff;
+            max-height: 340px;
+            overflow: auto;
+        }
+
+        .cison-fs-detail__preview table {
+            font-family: Arial, sans-serif;
+        }
+
+        .cison-fs-detail__preview h2,
+        .cison-fs-detail__preview h3 {
+            font-family: Arial, sans-serif;
+            color: #0f172a;
+        }
+
+        .cison-fs-detail__preview h3 {
+            color: #0f766e;
+        }
+
         .cison-fs-detail__input {
             width: 100%;
             padding: 8px 10px;
@@ -2689,6 +2807,10 @@ function cison_fellowship_submission_detail_styles()
 
         @media (max-width: 768px) {
             .cison-fs-detail__grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cison-fs-detail__email-cols {
                 grid-template-columns: 1fr;
             }
 
