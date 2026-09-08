@@ -508,12 +508,6 @@ function cison_fellowship_build_submission_summary($row)
             'Rank' => $s2_data['rank'] ?? 'N/A',
             'Date' => $s2_data['date'] ?? 'N/A',
         ),
-        __('Submission Metadata', 'cison') => array(
-            'Payment Status' => $row['payment_status'] ?? 'N/A',
-            'Application Status' => $row['application_status'] ?? 'N/A',
-            'Order ID' => $row['order_id'] ?? 'N/A',
-            'Registered' => !empty($row['registration_date']) ? date_i18n('M j, Y g:i a', strtotime($row['registration_date'])) : 'N/A',
-        ),
     );
 
     $html = '';
