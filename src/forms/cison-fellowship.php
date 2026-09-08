@@ -228,6 +228,38 @@ function cison_fellowship_handle_sponsor_signature_upload($sponsor_num)
     return null;
 }
 
+function cison_fellowship_handle_applicant_signature_upload()
+{
+    $field_name = 'signature';
+
+    if (empty($_FILES[$field_name]) || $_FILES[$field_name]['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $file = $_FILES[$field_name];
+    $allowed_types = array('image/jpeg', 'image/png', 'image/gif', 'image/webp');
+
+    if (!in_array($file['type'], $allowed_types)) {
+        return null;
+    }
+
+    $upload_dir = wp_upload_dir();
+    $signature_dir = $upload_dir['path'] . '/fellowship_applicants';
+
+    if (!file_exists($signature_dir)) {
+        wp_mkdir_p($signature_dir);
+    }
+
+    $filename = 'applicant_' . time() . '_' . sanitize_file_name($file['name']);
+    $filepath = $signature_dir . '/' . $filename;
+
+    if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        return $upload_dir['url'] . '/fellowship_applicants/' . $filename;
+    }
+
+    return null;
+}
+
 function cison_fellowship_validate($data)
 {
     $errors = array();
@@ -493,6 +525,7 @@ function cison_fellowship_build_submission_summary($row)
             'Employer' => $row['employer'] ?? 'N/A',
             'Years of Practice' => $row['years_of_practice'] ?? 'N/A',
             'Area of Statistics' => $row['area_of_practice'] ?? 'N/A',
+            'Signature' => $row['signature'] ?? '',
         ),
         __('Sponsor 1', 'cison') . ' (' . ($row['sponsor_1_status'] ?? 'pending') . ')' => array(
             'Name' => $s1_data['name'] ?? 'N/A',
@@ -604,6 +637,12 @@ function cison_fellowship_get_signature_attachments($row)
 {
     $attachments = array();
 
+    $applicant_sig = $row['signature'] ?? '';
+    $applicant_path = cison_fellowship_url_to_path($applicant_sig);
+    if ($applicant_path && is_file($applicant_path)) {
+        $attachments[] = $applicant_path;
+    }
+
     foreach (array('sponsor_1_data', 'sponsor_2_data') as $key) {
         $data = !empty($row[$key]) ? json_decode($row[$key], true) : array();
         $url = $data['signature'] ?? '';
@@ -643,6 +682,11 @@ function cison_fellowship_handle_applicant_submission()
 
     if (!empty($errors)) {
         return;
+    }
+
+    $signature_url = cison_fellowship_handle_applicant_signature_upload();
+    if ($signature_url) {
+        $data['signature'] = $signature_url;
     }
 
     if (!class_exists('WooCommerce') || !WC()) {
@@ -927,6 +971,7 @@ function cison_fellowship_save_on_payment_complete($order_id)
         'academic_qualifications' => cison_fellowship_qualifications_to_string($data['academic_qualifications']),
         'professional_experience' => $data['professional_experience'],
         'publications' => $data['publications'],
+        'signature' => $data['signature'] ?? '',
         'num_sponsors' => 2,
         'product_ids' => $product_ids,
         'payment_status' => 'paid',
@@ -1733,6 +1778,12 @@ function cison_fellowship_submission_detail_shortcode()
                         <span class="cison-fs-detail__label">Nationality</span>
                         <span class="cison-fs-detail__value"><?php echo esc_html($row['nationality'] ?: 'N/A'); ?></span>
                     </div>
+                    <?php if (!empty($row['signature'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Signature</span>
+                            <span class="cison-fs-detail__value"><a href="<?php echo esc_url($row['signature']); ?>" target="_blank">View Signature</a></span>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
