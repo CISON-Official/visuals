@@ -478,55 +478,112 @@ function cison_fellowship_build_submission_summary($row)
     $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
     $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
 
-    $lines = array();
-    $lines[] = 'Reference Number: ' . ($row['reference_number'] ?? 'N/A');
-    $lines[] = 'Applicant: ' . cison_fellowship_get_full_name($row);
-    $lines[] = 'Email: ' . ($row['email'] ?? 'N/A');
-    $lines[] = 'Phone: ' . ($row['phone'] ?? 'N/A');
-    $lines[] = 'Membership Status: ' . ($row['is_member'] ?? 'N/A');
-    $lines[] = 'Membership Number: ' . ($row['membership_number'] ?? 'N/A');
-    $lines[] = 'NSA Fellow: ' . (strtolower($row['is_nsa_fellow'] ?? '') === 'yes' ? 'Yes' : 'No');
-    if (!empty($row['nsa_fellow_id'])) {
-        $lines[] = 'NSA Fellow ID: ' . $row['nsa_fellow_id'];
-    }
-    $lines[] = '';
-    $lines[] = '--- Professional ---';
-    $lines[] = 'Occupation: ' . ($row['occupation'] ?? 'N/A');
-    $lines[] = 'Designation: ' . ($row['designation'] ?? 'N/A');
-    $lines[] = 'Employer: ' . ($row['employer'] ?? 'N/A');
-    $lines[] = 'Years of Practice: ' . ($row['years_of_practice'] ?? 'N/A');
-    $lines[] = 'Area of Statistics: ' . ($row['area_of_practice'] ?? 'N/A');
-    $lines[] = '';
-    $lines[] = '--- Academic Qualifications ---';
-    $lines[] = $row['academic_qualifications'] ?: 'N/A';
-    $lines[] = '';
-    $lines[] = '--- Professional Experience ---';
-    $lines[] = $row['professional_experience'] ?: 'N/A';
-    $lines[] = '';
-    $lines[] = '--- Publications / Contribution ---';
-    $lines[] = $row['publications'] ?: 'N/A';
-    $lines[] = '';
-    $lines[] = '--- Sponsor 1 (' . ($row['sponsor_1_status'] ?? 'pending') . ') ---';
-    $lines[] = 'Name: ' . ($s1_data['name'] ?? 'N/A');
-    $lines[] = 'Membership ID: ' . ($s1_data['membership_id'] ?? 'N/A');
-    $lines[] = 'Membership Status: ' . ($s1_data['membership_status'] ?? 'N/A');
-    $lines[] = 'Rank: ' . ($s1_data['rank'] ?? 'N/A');
-    $lines[] = 'Date: ' . ($s1_data['date'] ?? 'N/A');
-    $lines[] = '';
-    $lines[] = '--- Sponsor 2 (' . ($row['sponsor_2_status'] ?? 'pending') . ') ---';
-    $lines[] = 'Name: ' . ($s2_data['name'] ?? 'N/A');
-    $lines[] = 'Membership ID: ' . ($s2_data['membership_id'] ?? 'N/A');
-    $lines[] = 'Membership Status: ' . ($s2_data['membership_status'] ?? 'N/A');
-    $lines[] = 'Rank: ' . ($s2_data['rank'] ?? 'N/A');
-    $lines[] = 'Date: ' . ($s2_data['date'] ?? 'N/A');
-    $lines[] = '';
-    $lines[] = '--- Metadata ---';
-    $lines[] = 'Payment Status: ' . ($row['payment_status'] ?? 'N/A');
-    $lines[] = 'Application Status: ' . ($row['application_status'] ?? 'N/A');
-    $lines[] = 'Order ID: ' . ($row['order_id'] ?? 'N/A');
-    $lines[] = 'Registered: ' . (!empty($row['registration_date']) ? date_i18n('M j, Y g:i a', strtotime($row['registration_date'])) : 'N/A');
+    $rows = array(
+        __('Applicant Details', 'cison') => array(
+            'Reference Number' => $row['reference_number'] ?? 'N/A',
+            'Full Name' => cison_fellowship_get_full_name($row),
+            'Email' => $row['email'] ?? 'N/A',
+            'Phone' => $row['phone'] ?? 'N/A',
+            'Membership Status' => $row['is_member'] ?? 'N/A',
+            'Membership Number' => $row['membership_number'] ?? 'N/A',
+            'NSA Fellow' => strtolower($row['is_nsa_fellow'] ?? '') === 'yes' ? 'Yes' : 'No',
+            'NSA Fellow ID' => $row['nsa_fellow_id'] ?? '',
+            'Occupation' => $row['occupation'] ?? 'N/A',
+            'Designation' => $row['designation'] ?? 'N/A',
+            'Employer' => $row['employer'] ?? 'N/A',
+            'Years of Practice' => $row['years_of_practice'] ?? 'N/A',
+            'Area of Statistics' => $row['area_of_practice'] ?? 'N/A',
+        ),
+        __('Sponsor 1', 'cison') . ' (' . ($row['sponsor_1_status'] ?? 'pending') . ')' => array(
+            'Name' => $s1_data['name'] ?? 'N/A',
+            'Membership ID' => $s1_data['membership_id'] ?? 'N/A',
+            'Membership Status' => $s1_data['membership_status'] ?? 'N/A',
+            'Rank' => $s1_data['rank'] ?? 'N/A',
+            'Date' => $s1_data['date'] ?? 'N/A',
+        ),
+        __('Sponsor 2', 'cison') . ' (' . ($row['sponsor_2_status'] ?? 'pending') . ')' => array(
+            'Name' => $s2_data['name'] ?? 'N/A',
+            'Membership ID' => $s2_data['membership_id'] ?? 'N/A',
+            'Membership Status' => $s2_data['membership_status'] ?? 'N/A',
+            'Rank' => $s2_data['rank'] ?? 'N/A',
+            'Date' => $s2_data['date'] ?? 'N/A',
+        ),
+        __('Submission Metadata', 'cison') => array(
+            'Payment Status' => $row['payment_status'] ?? 'N/A',
+            'Application Status' => $row['application_status'] ?? 'N/A',
+            'Order ID' => $row['order_id'] ?? 'N/A',
+            'Registered' => !empty($row['registration_date']) ? date_i18n('M j, Y g:i a', strtotime($row['registration_date'])) : 'N/A',
+        ),
+    );
 
-    return implode("\n", $lines);
+    $html = '';
+    $html .= '<h2 style="margin:0 0 18px;color:#0f172a;font-family:Arial,sans-serif;">Fellowship Submission</h2>';
+    $html .= '<p style="margin:0 0 18px;color:#475569;font-family:Arial,sans-serif;font-size:14px;">Below are the details of the CISON Fellowship submission.</p>';
+
+    foreach ($rows as $title => $fields) {
+        $html .= '<h3 style="margin:22px 0 10px;color:#0f766e;font-family:Arial,sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:0.04em;">' . esc_html($title) . '</h3>';
+        $html .= '<table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">';
+        foreach ($fields as $label => $value) {
+            $html .= '<tr>';
+            $html .= '<td style="width:35%;padding:8px 10px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-weight:600;vertical-align:top;">' . esc_html($label) . '</td>';
+            $html .= '<td style="padding:8px 10px;border:1px solid #e2e8f0;color:#0f172a;vertical-align:top;">' . esc_html($value ?: 'N/A') . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</table>';
+    }
+
+    $html .= '<h3 style="margin:22px 0 10px;color:#0f766e;font-family:Arial,sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:0.04em;">' . esc_html__('Academic Qualifications', 'cison') . '</h3>';
+    $html .= cison_fellowship_email_block($row['academic_qualifications'] ?: 'N/A');
+
+    $html .= '<h3 style="margin:22px 0 10px;color:#0f766e;font-family:Arial,sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:0.04em;">' . esc_html__('Professional Experience', 'cison') . '</h3>';
+    $html .= cison_fellowship_email_block($row['professional_experience'] ?: 'N/A');
+
+    $html .= '<h3 style="margin:22px 0 10px;color:#0f766e;font-family:Arial,sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:0.04em;">' . esc_html__('Publications / Contribution', 'cison') . '</h3>';
+    $html .= cison_fellowship_email_block($row['publications'] ?: 'N/A');
+
+    return $html;
+}
+
+function cison_fellowship_email_document($body_html)
+{
+    return '<!DOCTYPE html>' .
+        '<html lang="' . esc_attr(get_locale()) . '">' .
+        '<body style="margin:0;padding:0;background-color:#f1f5f9;">' .
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f1f5f9;">' .
+        '<tr><td align="center" style="padding:24px 12px;">' .
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;">' .
+        '<tr><td style="padding:28px 32px;font-family:Arial,sans-serif;color:#0f172a;font-size:14px;">' .
+        $body_html .
+        '</td></tr>' .
+        '<tr><td style="padding:16px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-family:Arial,sans-serif;font-size:12px;color:#94a3b8;">' .
+        esc_html__('This email was sent from the CISON website.', 'cison') .
+        '</td></tr>' .
+        '</table>' .
+        '</td></tr>' .
+        '</table>' .
+        '</body>' .
+        '</html>';
+}
+
+function cison_fellowship_email_block($content)
+{
+    $paragraphs = preg_split("/\r\n|\r|\n/", (string) $content);
+    $paragraphs = array_values(array_filter(array_map('trim', $paragraphs)));
+
+    $html = '<div style="padding:12px 14px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;font-family:Arial,sans-serif;font-size:13px;color:#334155;line-height:1.6;">';
+    if (empty($paragraphs)) {
+        $html .= esc_html('N/A');
+    } else {
+        foreach ($paragraphs as $i => $para) {
+            if ($i > 0) {
+                $html .= '<br>';
+            }
+            $html .= esc_html($para);
+        }
+    }
+    $html .= '</div>';
+
+    return $html;
 }
 
 function cison_fellowship_render_status_badge($status)
@@ -731,6 +788,13 @@ function cison_fellowship_handle_send_submission_email()
         exit;
     }
 
+    // If the message is plain text (no HTML tags), escape it and preserve line breaks.
+    if (strip_tags($message) === $message) {
+        $message = nl2br(esc_html($message));
+    }
+
+    $message = cison_fellowship_email_document($message);
+
     $emails = array_map('trim', explode(',', $to_raw));
     $emails = array_values(array_filter($emails));
 
@@ -740,9 +804,12 @@ function cison_fellowship_handle_send_submission_email()
     }
 
     $sent = false;
+    $headers = array(
+        'Content-Type: text/html; charset=UTF-8',
+    );
     foreach ($emails as $email) {
         if (is_email($email)) {
-            $sent = wp_mail($email, $subject, $message) || $sent;
+            $sent = wp_mail($email, $subject, $message, $headers) || $sent;
         }
     }
 
