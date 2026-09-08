@@ -3,8 +3,14 @@
  * CISON Fellowship Application - Custom Form + WooCommerce Checkout
  *
  * Shortcodes:
- *   [cison_fellowship_application]   - Main application form
- *   [cison_fellowship_submissions]   - Admin submissions viewer
+ *   [cison_fellowship_application]      - Main application form
+ *   [cison_fellowship_submissions]      - Admin submissions viewer (list page: /fellowship-submissions-2026/)
+ *   [cison_fellowship_submission_detail] - Admin single submission detail (detail page: /fellowship-2026-detail-submission/)
+ *
+ * Admin features:
+ *   - List rows link to the detail page using the submission reference number (?fs_ref=...)
+ *   - Delete a submission from the list
+ *   - Email a single submission from the detail page to one or more addresses
  *
  * Flow:
  *   1. Applicant fills form → WooCommerce cart → checkout
@@ -19,6 +25,8 @@ if (!defined('ABSPATH')) {
 }
 
 define('CISON_FELLOWSHIP_FORM_URL', home_url('/fellowship-application/'));
+define('CISON_FELLOWSHIP_SUBMISSIONS_URL', home_url('/fellowship-submissions-2026/'));
+define('CISON_FELLOWSHIP_DETAIL_URL', home_url('/fellowship-2026-detail-submission/'));
 
 define('CISON_FELLOWSHIP_PRODUCT_NON_MEMBER', 14837);
 define('CISON_FELLOWSHIP_PRODUCT_MEMBER_NON_FELLOW', 14835);
@@ -466,6 +474,62 @@ function cison_fellowship_get_full_name($row)
     )));
 }
 
+function cison_fellowship_build_submission_summary($row)
+{
+    $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
+    $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
+
+    $lines = array();
+    $lines[] = 'Reference Number: ' . ($row['reference_number'] ?? 'N/A');
+    $lines[] = 'Applicant: ' . cison_fellowship_get_full_name($row);
+    $lines[] = 'Email: ' . ($row['email'] ?? 'N/A');
+    $lines[] = 'Phone: ' . ($row['phone'] ?? 'N/A');
+    $lines[] = 'Membership Status: ' . ($row['is_member'] ?? 'N/A');
+    $lines[] = 'Membership Number: ' . ($row['membership_number'] ?? 'N/A');
+    $lines[] = 'NSA Fellow: ' . (strtolower($row['is_nsa_fellow'] ?? '') === 'yes' ? 'Yes' : 'No');
+    if (!empty($row['nsa_fellow_id'])) {
+        $lines[] = 'NSA Fellow ID: ' . $row['nsa_fellow_id'];
+    }
+    $lines[] = '';
+    $lines[] = '--- Professional ---';
+    $lines[] = 'Occupation: ' . ($row['occupation'] ?? 'N/A');
+    $lines[] = 'Designation: ' . ($row['designation'] ?? 'N/A');
+    $lines[] = 'Employer: ' . ($row['employer'] ?? 'N/A');
+    $lines[] = 'Years of Practice: ' . ($row['years_of_practice'] ?? 'N/A');
+    $lines[] = 'Area of Statistics: ' . ($row['area_of_practice'] ?? 'N/A');
+    $lines[] = '';
+    $lines[] = '--- Academic Qualifications ---';
+    $lines[] = $row['academic_qualifications'] ?: 'N/A';
+    $lines[] = '';
+    $lines[] = '--- Professional Experience ---';
+    $lines[] = $row['professional_experience'] ?: 'N/A';
+    $lines[] = '';
+    $lines[] = '--- Publications / Contribution ---';
+    $lines[] = $row['publications'] ?: 'N/A';
+    $lines[] = '';
+    $lines[] = '--- Sponsor 1 (' . ($row['sponsor_1_status'] ?? 'pending') . ') ---';
+    $lines[] = 'Name: ' . ($s1_data['name'] ?? 'N/A');
+    $lines[] = 'Membership ID: ' . ($s1_data['membership_id'] ?? 'N/A');
+    $lines[] = 'Membership Status: ' . ($s1_data['membership_status'] ?? 'N/A');
+    $lines[] = 'Rank: ' . ($s1_data['rank'] ?? 'N/A');
+    $lines[] = 'Date: ' . ($s1_data['date'] ?? 'N/A');
+    $lines[] = '';
+    $lines[] = '--- Sponsor 2 (' . ($row['sponsor_2_status'] ?? 'pending') . ') ---';
+    $lines[] = 'Name: ' . ($s2_data['name'] ?? 'N/A');
+    $lines[] = 'Membership ID: ' . ($s2_data['membership_id'] ?? 'N/A');
+    $lines[] = 'Membership Status: ' . ($s2_data['membership_status'] ?? 'N/A');
+    $lines[] = 'Rank: ' . ($s2_data['rank'] ?? 'N/A');
+    $lines[] = 'Date: ' . ($s2_data['date'] ?? 'N/A');
+    $lines[] = '';
+    $lines[] = '--- Metadata ---';
+    $lines[] = 'Payment Status: ' . ($row['payment_status'] ?? 'N/A');
+    $lines[] = 'Application Status: ' . ($row['application_status'] ?? 'N/A');
+    $lines[] = 'Order ID: ' . ($row['order_id'] ?? 'N/A');
+    $lines[] = 'Registered: ' . (!empty($row['registration_date']) ? date_i18n('M j, Y g:i a', strtotime($row['registration_date'])) : 'N/A');
+
+    return implode("\n", $lines);
+}
+
 function cison_fellowship_render_status_badge($status)
 {
     $normalized = strtolower(trim((string) $status));
@@ -621,6 +685,113 @@ function cison_fellowship_handle_sponsor_submission()
     exit;
 }
 add_action('template_redirect', 'cison_fellowship_handle_sponsor_submission');
+
+// ============================================================
+// ADMIN: DELETE SUBMISSION
+// ============================================================
+
+function cison_fellowship_handle_delete_submission()
+{
+    if (!is_admin() || !current_user_can('manage_options')) {
+        return;
+    }
+
+    if (!isset($_POST['cison_fellowship_delete_submit'])) {
+        return;
+    }
+
+    if (!isset($_POST['cison_fellowship_delete_nonce'])
+        || !wp_verify_nonce($_POST['cison_fellowship_delete_nonce'], 'cison_fellowship_delete_action')) {
+        return;
+    }
+
+    $ref = isset($_POST['fs_ref']) ? sanitize_text_field(wp_unslash($_POST['fs_ref'])) : '';
+    if (empty($ref)) {
+        return;
+    }
+
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    $deleted = $wpdb->delete($table_name, array('reference_number' => $ref), array('%s'));
+
+    $redirect = add_query_arg(
+        $deleted ? 'fs_delete_msg' : 'fs_delete_error',
+        '1',
+        CISON_FELLOWSHIP_SUBMISSIONS_URL
+    );
+
+    wp_safe_redirect($redirect);
+    exit;
+}
+add_action('admin_post_cison_fellowship_delete', 'cison_fellowship_handle_delete_submission');
+
+// ============================================================
+// ADMIN: EMAIL SINGLE SUBMISSION
+// ============================================================
+
+function cison_fellowship_handle_send_submission_email()
+{
+    if (!is_admin() || !current_user_can('manage_options')) {
+        return;
+    }
+
+    if (!isset($_POST['cison_fellowship_email_submit'])) {
+        return;
+    }
+
+    if (!isset($_POST['cison_fellowship_email_nonce'])
+        || !wp_verify_nonce($_POST['cison_fellowship_email_nonce'], 'cison_fellowship_email_action')) {
+        return;
+    }
+
+    $ref = isset($_POST['fs_ref']) ? sanitize_text_field(wp_unslash($_POST['fs_ref'])) : '';
+    if (empty($ref)) {
+        return;
+    }
+
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM $table_name WHERE reference_number = %s LIMIT 1", $ref),
+        ARRAY_A
+    );
+
+    if (!$row) {
+        wp_safe_redirect(add_query_arg(array('fs_email_error' => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL));
+        exit;
+    }
+
+    $to_raw = isset($_POST['cison_fellowship_email_to']) ? trim(wp_unslash($_POST['cison_fellowship_email_to'])) : '';
+    $subject = isset($_POST['cison_fellowship_email_subject']) ? sanitize_text_field(wp_unslash($_POST['cison_fellowship_email_subject'])) : '';
+    $message = isset($_POST['cison_fellowship_email_message']) ? wp_kses_post(wp_unslash($_POST['cison_fellowship_email_message'])) : '';
+
+    if (empty($to_raw) || empty($subject) || empty($message)) {
+        wp_safe_redirect(add_query_arg(array('fs_email_error' => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL));
+        exit;
+    }
+
+    $emails = array_map('trim', explode(',', $to_raw));
+    $emails = array_values(array_filter($emails));
+
+    if (empty($emails)) {
+        wp_safe_redirect(add_query_arg(array('fs_email_error' => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL));
+        exit;
+    }
+
+    $sent = false;
+    foreach ($emails as $email) {
+        if (is_email($email)) {
+            $sent = wp_mail($email, $subject, $message) || $sent;
+        }
+    }
+
+    $redirect = add_query_arg(array(($sent ? 'fs_email_sent' : 'fs_email_error') => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL);
+    wp_safe_redirect($redirect);
+    exit;
+}
+add_action('admin_post_cison_fellowship_email_submission', 'cison_fellowship_handle_send_submission_email');
 
 // ============================================================
 // WOOCOMMERCE: SAVE ON PAYMENT COMPLETE
@@ -1314,6 +1485,11 @@ function cison_fellowship_submissions_shortcode($atts)
     ob_start();
     ?>
     <div class="cison-fs-submissions">
+        <?php if (isset($_GET['fs_delete_msg'])): ?>
+            <div class="cison-fs-submissions__message cison-fs-submissions__message--success">Submission deleted successfully.</div>
+        <?php elseif (isset($_GET['fs_delete_error'])): ?>
+            <div class="cison-fs-submissions__message cison-fs-submissions__message--error">There was an error deleting the submission.</div>
+        <?php endif; ?>
         <div class="cison-fs-submissions__controls">
             <form method="get" class="cison-fs-submissions__search">
                 <input type="text" name="fs_s" value="<?php echo esc_attr($search); ?>" placeholder="Search by name, email, reference...">
@@ -1346,6 +1522,7 @@ function cison_fellowship_submissions_shortcode($atts)
                         <th>Sponsor 2</th>
                         <th>Payment</th>
                         <th>Submitted</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1354,9 +1531,11 @@ function cison_fellowship_submissions_shortcode($atts)
                             <?php
                             $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
                             $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
+                            $detail_url = add_query_arg('fs_ref', rawurlencode($row['reference_number'] ?? ''), CISON_FELLOWSHIP_DETAIL_URL);
                             ?>
-                            <tr style="cursor:pointer;" onclick="window.location='<?php echo esc_url(add_query_arg('fs_ref', rawurlencode($row['reference_number'] ?? ''))); ?>';">
-                                <td><a href="<?php echo esc_url(add_query_arg('fs_ref', rawurlencode($row['reference_number'] ?? ''))); ?>" style="color:#0f766e;font-weight:700;text-decoration:none;"><?php echo esc_html($row['reference_number'] ?: 'N/A'); ?></a></td>
+                            <tr style="cursor:pointer;" onclick="window.location='<?php echo esc_url($detail_url); ?>';">
+                                <td><a href="<?php echo esc_url($detail_url); ?>" style="color:#0f766e;font-weight:700;text-decoration:none;"><?php echo esc_html($row['reference_number'] ?: 'N/A'); ?></a></td>
+                                <td>
                                     <strong><?php echo esc_html(cison_fellowship_get_full_name($row)); ?></strong><br>
                                     <small><?php echo esc_html($row['phone'] ?: ''); ?></small>
                                 </td>
@@ -1383,10 +1562,19 @@ function cison_fellowship_submissions_shortcode($atts)
                                 </td>
                                 <td><?php echo cison_fellowship_render_status_badge($row['payment_status']); ?></td>
                                 <td><?php echo esc_html(date_i18n('M j, Y g:i a', strtotime($row['registration_date']))); ?></td>
+                                <td onclick="event.stopPropagation();">
+                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Delete this submission? This cannot be undone.');" class="cison-fs-submissions__delete-form">
+                                        <input type="hidden" name="action" value="cison_fellowship_delete">
+                                        <?php wp_nonce_field('cison_fellowship_delete_action', 'cison_fellowship_delete_nonce'); ?>
+                                        <input type="hidden" name="cison_fellowship_delete_submit" value="1">
+                                        <input type="hidden" name="fs_ref" value="<?php echo esc_attr($row['reference_number']); ?>">
+                                        <button type="submit" class="cison-fs-submissions__delete">Delete</button>
+                                    </form>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="8">No fellowship submissions found.</td></tr>
+                        <tr><td colspan="9">No fellowship submissions found.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
@@ -1449,14 +1637,18 @@ function cison_fellowship_submission_detail_shortcode()
     $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
     $quals = !empty($row['academic_qualifications']) ? explode("\n", $row['academic_qualifications']) : array();
 
-    $back_url = remove_query_arg('fs_ref');
-
     ob_start();
     ?>
     <div class="cison-fs-detail">
         <div class="cison-fs-detail__nav">
-            <a href="<?php echo esc_url($back_url); ?>">&larr; Back to Submissions</a>
+            <a href="<?php echo esc_url(CISON_FELLOWSHIP_SUBMISSIONS_URL); ?>">&larr; Back to Submissions</a>
         </div>
+
+        <?php if (isset($_GET['fs_email_sent'])): ?>
+            <div class="cison-fs-detail__message cison-fs-detail__message--success">Email sent successfully.</div>
+        <?php elseif (isset($_GET['fs_email_error'])): ?>
+            <div class="cison-fs-detail__message cison-fs-detail__message--error">There was an error sending the email. Please check the recipient addresses and try again.</div>
+        <?php endif; ?>
 
         <div class="cison-fs-detail__header">
             <h3>Submission Details</h3>
@@ -1718,6 +1910,42 @@ function cison_fellowship_submission_detail_shortcode()
                         <span class="cison-fs-detail__value"><?php echo esc_html(date_i18n('M j, Y g:i a', strtotime($row['updated_at']))); ?></span>
                     </div>
                 </div>
+            </div>
+
+            <div class="cison-fs-detail__card cison-fs-detail__card--meta cison-fs-detail__card--email">
+                <h4>Email This Submission</h4>
+                <p class="cison-fs-detail__help">
+                    Send this submission's details to one or more recipients. Separate multiple email addresses with commas (e.g. a@example.com, b@example.com).
+                </p>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="cison-fs-detail__email-form">
+                    <input type="hidden" name="action" value="cison_fellowship_email_submission">
+                    <?php wp_nonce_field('cison_fellowship_email_action', 'cison_fellowship_email_nonce'); ?>
+                    <input type="hidden" name="cison_fellowship_email_submit" value="1">
+                    <input type="hidden" name="fs_ref" value="<?php echo esc_attr($row['reference_number']); ?>">
+
+                    <div class="cison-fs-detail__fields">
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">To</span>
+                            <span class="cison-fs-detail__value">
+                                <input type="text" name="cison_fellowship_email_to" value="<?php echo esc_attr(strtolower($row['email'])); ?>" class="cison-fs-detail__input" required>
+                            </span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Subject</span>
+                            <span class="cison-fs-detail__value">
+                                <input type="text" name="cison_fellowship_email_subject" value="Fellowship Submission <?php echo esc_attr($row['reference_number']); ?>" class="cison-fs-detail__input" required>
+                            </span>
+                        </div>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Message</span>
+                            <span class="cison-fs-detail__value">
+                                <textarea name="cison_fellowship_email_message" rows="5" class="cison-fs-detail__input" required><?php echo esc_textarea(cison_fellowship_build_submission_summary($row)); ?></textarea>
+                            </span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="cison-fs-detail__send-btn">Send Email</button>
+                </form>
             </div>
         </div>
     </div>
@@ -2073,6 +2301,44 @@ function cison_fellowship_submissions_styles()
             cursor: pointer;
         }
 
+        .cison-fs-submissions__message {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .cison-fs-submissions__message--success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .cison-fs-submissions__message--error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .cison-fs-submissions__delete-form {
+            margin: 0;
+        }
+
+        .cison-fs-submissions__delete {
+            padding: 6px 12px;
+            border: 1px solid #ef4444;
+            border-radius: 8px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .cison-fs-submissions__delete:hover {
+            background: #fecaca;
+            border-color: #dc2626;
+        }
+
         .cison-fs-submissions__table-wrap {
             overflow-x: auto;
             border: 1px solid #e2e8f0;
@@ -2296,6 +2562,72 @@ function cison_fellowship_submission_detail_styles()
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px 24px;
+        }
+
+        .cison-fs-detail__message {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .cison-fs-detail__message--success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .cison-fs-detail__message--error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .cison-fs-detail__card--email {
+            background: #f8fafc;
+        }
+
+        .cison-fs-detail__help {
+            margin: 0 0 16px;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .cison-fs-detail__email-form .cison-fs-detail__fields {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .cison-fs-detail__input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #0f172a;
+            background: #fff;
+            box-sizing: border-box;
+        }
+
+        .cison-fs-detail__input:focus {
+            border-color: #0f766e;
+            outline: none;
+        }
+
+        .cison-fs-detail__send-btn {
+            display: inline-block;
+            margin-top: 4px;
+            padding: 10px 20px;
+            border: 0;
+            border-radius: 999px;
+            background: #0f766e;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .cison-fs-detail__send-btn:hover {
+            background: #115e59;
         }
 
         @media (max-width: 768px) {
