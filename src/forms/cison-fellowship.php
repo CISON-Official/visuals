@@ -500,6 +500,7 @@ function cison_fellowship_build_submission_summary($row)
             'Membership Status' => $s1_data['membership_status'] ?? 'N/A',
             'Rank' => $s1_data['rank'] ?? 'N/A',
             'Date' => $s1_data['date'] ?? 'N/A',
+            'Signature' => $s1_data['signature'] ?? '',
         ),
         __('Sponsor 2', 'cison') . ' (' . ($row['sponsor_2_status'] ?? 'pending') . ')' => array(
             'Name' => $s2_data['name'] ?? 'N/A',
@@ -507,6 +508,7 @@ function cison_fellowship_build_submission_summary($row)
             'Membership Status' => $s2_data['membership_status'] ?? 'N/A',
             'Rank' => $s2_data['rank'] ?? 'N/A',
             'Date' => $s2_data['date'] ?? 'N/A',
+            'Signature' => $s2_data['signature'] ?? '',
         ),
     );
 
@@ -520,7 +522,14 @@ function cison_fellowship_build_submission_summary($row)
         foreach ($fields as $label => $value) {
             $html .= '<tr>';
             $html .= '<td style="width:35%;padding:8px 10px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-weight:600;vertical-align:top;">' . esc_html($label) . '</td>';
-            $html .= '<td style="padding:8px 10px;border:1px solid #e2e8f0;color:#0f172a;vertical-align:top;">' . esc_html($value ?: 'N/A') . '</td>';
+            if ($label === 'Signature' && !empty($value)) {
+                $html .= '<td style="padding:8px 10px;border:1px solid #e2e8f0;color:#0f172a;vertical-align:top;">';
+                $html .= '<a href="' . esc_url($value) . '" style="color:#0f766e;font-weight:600;text-decoration:none;">View Signature</a>';
+                $html .= '<br><img src="' . esc_url($value) . '" alt="Signature" style="max-width:180px;height:auto;border:1px solid #e2e8f0;border-radius:6px;margin-top:6px;">';
+                $html .= '</td>';
+            } else {
+                $html .= '<td style="padding:8px 10px;border:1px solid #e2e8f0;color:#0f172a;vertical-align:top;">' . esc_html($value ?: 'N/A') . '</td>';
+            }
             $html .= '</tr>';
         }
         $html .= '</table>';
@@ -578,6 +587,34 @@ function cison_fellowship_email_block($content)
     $html .= '</div>';
 
     return $html;
+}
+
+function cison_fellowship_url_to_path($url)
+{
+    $upload = wp_upload_dir();
+
+    if (!empty($url) && strpos($url, $upload['baseurl']) === 0) {
+        return $upload['basedir'] . substr($url, strlen($upload['baseurl']));
+    }
+
+    return null;
+}
+
+function cison_fellowship_get_signature_attachments($row)
+{
+    $attachments = array();
+
+    foreach (array('sponsor_1_data', 'sponsor_2_data') as $key) {
+        $data = !empty($row[$key]) ? json_decode($row[$key], true) : array();
+        $url = $data['signature'] ?? '';
+        $path = cison_fellowship_url_to_path($url);
+
+        if ($path && is_file($path)) {
+            $attachments[] = $path;
+        }
+    }
+
+    return $attachments;
 }
 
 function cison_fellowship_render_status_badge($status)
@@ -801,9 +838,11 @@ function cison_fellowship_handle_send_submission_email()
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
     );
+    $attachments = cison_fellowship_get_signature_attachments($row);
+
     foreach ($emails as $email) {
         if (is_email($email)) {
-            $sent = wp_mail($email, $subject, $message, $headers) || $sent;
+            $sent = wp_mail($email, $subject, $message, $headers, $attachments) || $sent;
         }
     }
 
