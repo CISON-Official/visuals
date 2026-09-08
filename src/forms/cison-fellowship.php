@@ -9,7 +9,6 @@
  *
  * Admin features:
  *   - List rows link to the detail page using the submission reference number (?fs_ref=...)
- *   - Delete a submission from the list
  *   - Email a single submission from the detail page to one or more addresses
  *
  * Flow:
@@ -685,46 +684,6 @@ function cison_fellowship_handle_sponsor_submission()
     exit;
 }
 add_action('template_redirect', 'cison_fellowship_handle_sponsor_submission');
-
-// ============================================================
-// ADMIN: DELETE SUBMISSION
-// ============================================================
-
-function cison_fellowship_handle_delete_submission()
-{
-    if (!is_admin() || !current_user_can('manage_options')) {
-        return;
-    }
-
-    if (!isset($_POST['cison_fellowship_delete_submit'])) {
-        return;
-    }
-
-    if (!isset($_POST['cison_fellowship_delete_nonce'])
-        || !wp_verify_nonce($_POST['cison_fellowship_delete_nonce'], 'cison_fellowship_delete_action')) {
-        return;
-    }
-
-    $ref = isset($_POST['fs_ref']) ? sanitize_text_field(wp_unslash($_POST['fs_ref'])) : '';
-    if (empty($ref)) {
-        return;
-    }
-
-    global $wpdb;
-    $table_name = cison_fellowship_get_table_name();
-
-    $deleted = $wpdb->delete($table_name, array('reference_number' => $ref), array('%s'));
-
-    $redirect = add_query_arg(
-        $deleted ? 'fs_delete_msg' : 'fs_delete_error',
-        '1',
-        CISON_FELLOWSHIP_SUBMISSIONS_URL
-    );
-
-    wp_safe_redirect($redirect);
-    exit;
-}
-add_action('admin_post_cison_fellowship_delete', 'cison_fellowship_handle_delete_submission');
 
 // ============================================================
 // ADMIN: EMAIL SINGLE SUBMISSION
@@ -1485,11 +1444,6 @@ function cison_fellowship_submissions_shortcode($atts)
     ob_start();
     ?>
     <div class="cison-fs-submissions">
-        <?php if (isset($_GET['fs_delete_msg'])): ?>
-            <div class="cison-fs-submissions__message cison-fs-submissions__message--success">Submission deleted successfully.</div>
-        <?php elseif (isset($_GET['fs_delete_error'])): ?>
-            <div class="cison-fs-submissions__message cison-fs-submissions__message--error">There was an error deleting the submission.</div>
-        <?php endif; ?>
         <div class="cison-fs-submissions__controls">
             <form method="get" class="cison-fs-submissions__search">
                 <input type="text" name="fs_s" value="<?php echo esc_attr($search); ?>" placeholder="Search by name, email, reference...">
@@ -1522,7 +1476,6 @@ function cison_fellowship_submissions_shortcode($atts)
                         <th>Sponsor 2</th>
                         <th>Payment</th>
                         <th>Submitted</th>
-                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1562,19 +1515,10 @@ function cison_fellowship_submissions_shortcode($atts)
                                 </td>
                                 <td><?php echo cison_fellowship_render_status_badge($row['payment_status']); ?></td>
                                 <td><?php echo esc_html(date_i18n('M j, Y g:i a', strtotime($row['registration_date']))); ?></td>
-                                <td onclick="event.stopPropagation();">
-                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Delete this submission? This cannot be undone.');" class="cison-fs-submissions__delete-form">
-                                        <input type="hidden" name="action" value="cison_fellowship_delete">
-                                        <?php wp_nonce_field('cison_fellowship_delete_action', 'cison_fellowship_delete_nonce'); ?>
-                                        <input type="hidden" name="cison_fellowship_delete_submit" value="1">
-                                        <input type="hidden" name="fs_ref" value="<?php echo esc_attr($row['reference_number']); ?>">
-                                        <button type="submit" class="cison-fs-submissions__delete">Delete</button>
-                                    </form>
-                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="9">No fellowship submissions found.</td></tr>
+                        <tr><td colspan="8">No fellowship submissions found.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
@@ -2299,44 +2243,6 @@ function cison_fellowship_submissions_styles()
             background: #0f766e;
             color: #fff;
             cursor: pointer;
-        }
-
-        .cison-fs-submissions__message {
-            margin-bottom: 16px;
-            padding: 12px 16px;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .cison-fs-submissions__message--success {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .cison-fs-submissions__message--error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .cison-fs-submissions__delete-form {
-            margin: 0;
-        }
-
-        .cison-fs-submissions__delete {
-            padding: 6px 12px;
-            border: 1px solid #ef4444;
-            border-radius: 8px;
-            background: #fee2e2;
-            color: #991b1b;
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .cison-fs-submissions__delete:hover {
-            background: #fecaca;
-            border-color: #dc2626;
         }
 
         .cison-fs-submissions__table-wrap {
