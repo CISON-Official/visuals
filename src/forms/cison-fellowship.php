@@ -1417,6 +1417,11 @@ function cison_fellowship_form_shortcode()
                             <input id="cison_fs_nationality" type="text" name="nationality"
                                 value="<?php echo esc_attr($values['nationality']); ?>">
                         </div>
+                        <div>
+                            <label for="cison_fs_member_number">CISON Member Number <span>*</span></label>
+                            <input id="cison_fs_member_number" type="text" name="membership_number"
+                                value="<?php echo esc_attr($values['membership_number']); ?>" required>
+                        </div>
                     </div>
                 </div>
 
@@ -1488,16 +1493,11 @@ function cison_fellowship_form_shortcode()
 
                 <div class="cison-fs__section js-form-section" data-section="additional">
                     <h4>Additional Information</h4>
-                    <div class="cison-fs__grid cison-fs__grid--two">
+                    <div class="cison-fs__grid">
                         <div>
                             <label for="cison_fs_years">Years of Practice</label>
                             <input id="cison_fs_years" type="text" name="years_of_practice"
                                 value="<?php echo esc_attr($values['years_of_practice']); ?>">
-                        </div>
-                        <div>
-                            <label for="cison_fs_member_number">CISON Member Number <span>*</span></label>
-                            <input id="cison_fs_member_number" type="text" name="membership_number"
-                                value="<?php echo esc_attr($values['membership_number']); ?>" required>
                         </div>
                     </div>
 
