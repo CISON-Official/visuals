@@ -776,6 +776,30 @@ function cison_fellowship_handle_applicant_submission()
 add_action('template_redirect', 'cison_fellowship_handle_applicant_submission');
 
 // ============================================================
+// WOOCOMMERCE: PERSIST APPLICATION DATA ON ORDER
+// ============================================================
+
+function cison_fellowship_persist_entry_on_order($order, $data)
+{
+    if (!WC()->session) {
+        return;
+    }
+
+    $entry = WC()->session->get('cison_fellowship_entry');
+    if (!empty($entry) && is_array($entry)) {
+        $order->update_meta_data('_cison_fellowship_entry', $entry);
+    }
+}
+add_action('woocommerce_checkout_create_order', 'cison_fellowship_persist_entry_on_order', 10, 2);
+
+function cison_fellowship_clear_session_entry()
+{
+    if (WC()->session) {
+        WC()->session->__unset('cison_fellowship_entry');
+    }
+}
+
+// ============================================================
 // SPONSOR FORM SUBMISSION
 // ============================================================
 
@@ -963,17 +987,37 @@ add_action('admin_post_cison_fellowship_email_submission', 'cison_fellowship_han
 
 function cison_fellowship_save_on_payment_complete($order_id)
 {
-    if (!WC()->session) {
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    // Guard against duplicate registrations for the same order: both
+    // woocommerce_payment_complete and woocommerce_order_status_completed
+    // can fire for a single completion.
+    if ($wpdb->get_var($wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d LIMIT 1", (int) $order_id))) {
         return;
     }
 
-    $data = WC()->session->get('cison_fellowship_entry');
+    $data = array();
+
+    // Prefer the application entry persisted on the order itself so saving
+    // no longer depends on the applicant's browser session (works for late
+    // Paystack webhooks and manual admin order updates too).
+    $order = wc_get_order($order_id);
+    if ($order) {
+        $order_entry = $order->get_meta('_cison_fellowship_entry', true);
+        if (!empty($order_entry) && is_array($order_entry)) {
+            $data = $order_entry;
+        }
+    }
+
+    // Fall back to the session entry for carts created before this fix.
+    if (empty($data) && WC()->session) {
+        $data = WC()->session->get('cison_fellowship_entry');
+    }
+
     if (!$data || !is_array($data)) {
         return;
     }
-
-    global $wpdb;
-    $table_name = cison_fellowship_get_table_name();
 
     $products = cison_fellowship_resolve_products($data);
     $product_ids = implode(',', $products);
@@ -991,7 +1035,7 @@ function cison_fellowship_save_on_payment_complete($order_id)
         ))
     ) {
         error_log('CISON Fellowship: duplicate membership number blocked on save: ' . $membership_number . ' (order ' . $order_id . ')');
-        WC()->session->__unset('cison_fellowship_entry');
+        cison_fellowship_clear_session_entry();
         return;
     }
 
@@ -1003,7 +1047,7 @@ function cison_fellowship_save_on_payment_complete($order_id)
         ))
     ) {
         error_log('CISON Fellowship: duplicate NSA fellow ID blocked on save: ' . $nsa_fellow_id . ' (order ' . $order_id . ')');
-        WC()->session->__unset('cison_fellowship_entry');
+        cison_fellowship_clear_session_entry();
         return;
     }
 
@@ -1055,7 +1099,7 @@ function cison_fellowship_save_on_payment_complete($order_id)
         cison_fellowship_send_applicant_email($insert_data, $token);
     }
 
-    WC()->session->__unset('cison_fellowship_entry');
+    cison_fellowship_clear_session_entry();
 }
 add_action('woocommerce_payment_complete', 'cison_fellowship_save_on_payment_complete');
 add_action('woocommerce_order_status_completed', 'cison_fellowship_save_on_payment_complete');
