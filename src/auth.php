@@ -25,7 +25,7 @@ function cison_custom_guest_access_control()
         '/2nd-quarter-prs-student-registration/',
         '/2nd-prs-individual-registration/',
         '/corporate-prs-2nd-quarter-registration/',
-        '/examination-submissions/',
+        // '/examination-submissions/',
         '/checkout/',
         '/checkout/order-received/',
         '/register/',

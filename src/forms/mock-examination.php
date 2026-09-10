@@ -554,7 +554,8 @@ function cison_examination_registration_form_shortcode()
 
 function cison_examination_submissions_shortcode($atts)
 {
-    if (!current_user_can('manage_options')) {
+    $allowed_user_ids = array(216, 284, 180);
+    if (!current_user_can('manage_options') && !in_array(get_current_user_id(), $allowed_user_ids)) {
         return '<p>You do not have permission to view examination submissions.</p>';
     }
 
