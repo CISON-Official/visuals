@@ -81,6 +81,7 @@ require_once VISUALS_PATH . 'src/corporate/default_member_dir.php';
 require_once VISUALS_PATH . 'src/templates/conference_table.php';
 require_once VISUALS_PATH . 'src/student-member-upgrade.php';
 require_once VISUALS_PATH . 'src/admin/membership-certificate.php';
+require_once VISUALS_PATH . 'src/admin/fellowship-submissions.php';
 require_once VISUALS_PATH . 'src/templates/member-conference.php';
 require_once VISUALS_PATH . 'src/election/main.php';
 require_once VISUALS_PATH . 'src/election/database.php';
