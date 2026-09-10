@@ -63,6 +63,7 @@ class CISON_Fellowship_Submissions_Admin
 
             case 'view':
                 $this->handle_update_created_at();
+                $this->handle_resend_sponsor_email();
                 $this->render_view_screen();
                 return;
 
@@ -93,6 +94,9 @@ class CISON_Fellowship_Submissions_Admin
             'date-error'      => array('error',   __('Invalid date format. Use YYYY-MM-DD HH:MM:SS.', 'cison')),
             'saved'           => array('success', __('Submission updated.', 'cison')),
             'save-error'      => array('error',   __('Could not save the changes. Please try again.', 'cison')),
+            'email-sent'      => array('success', __('Sponsorship email sent to the applicant.', 'cison')),
+            'email-error'     => array('error',   __('Could not send the sponsorship email. Please try again.', 'cison')),
+            'email-complete'  => array('error',   __('Sponsorship is already complete. No email sent.', 'cison')),
         );
 
         if (!isset($messages[$key])) {
@@ -301,6 +305,45 @@ class CISON_Fellowship_Submissions_Admin
         $this->redirect('view', array('ref' => $ref, 'fs_notice' => false === $updated ? 'date-error' : 'date-updated'));
     }
 
+    private function handle_resend_sponsor_email()
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['cison_fs_resend_email'])) {
+            return;
+        }
+
+        $ref = isset($_POST['fs_ref']) ? sanitize_text_field(wp_unslash($_POST['fs_ref'])) : '';
+        if (!$ref) {
+            return;
+        }
+
+        if (!wp_verify_nonce($_POST['_wpnonce'] ?? '', 'cison_fs_resend_email_' . md5($ref))) {
+            return;
+        }
+
+        if (!function_exists('cison_fellowship_send_applicant_email')) {
+            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-error'));
+        }
+
+        $row = $this->get_row($ref);
+        if (!$row) {
+            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'not-found'));
+        }
+
+        // Sponsorship is complete once Sponsor 2 has submitted; nothing to resend.
+        if (($row['sponsor_2_status'] ?? '') === 'submitted') {
+            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-complete'));
+        }
+
+        $token = $row['sponsor_token'] ?? '';
+        if (empty($token)) {
+            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-error'));
+        }
+
+        $sent = cison_fellowship_send_applicant_email($row, $token);
+
+        $this->redirect('view', array('ref' => $ref, 'fs_notice' => $sent ? 'email-sent' : 'email-error'));
+    }
+
     private function render_view_screen()
     {
         global $wpdb;
@@ -441,6 +484,21 @@ class CISON_Fellowship_Submissions_Admin
             __('Registered', 'cison')       => date_i18n('M j, Y g:i a', strtotime($row['registration_date'])),
             __('Last Updated', 'cison')     => date_i18n('M j, Y g:i a', strtotime($row['updated_at'])),
         ), false, true);
+
+        if (($row['sponsor_2_status'] ?? '') !== 'submitted') {
+            // Resend sponsorship email (sponsorship not yet complete)
+            echo '<div class="cison-fs-detail__card cison-fs-detail__card--meta">';
+            echo '<h4>' . esc_html__('Resend Sponsorship Email', 'cison') . '</h4>';
+            echo '<p class="cison-fs-detail__help">Resend the sponsorship endorsement instructions to the applicant (' .
+                esc_html($row['email']) . '). Use this when the applicant has not yet secured both sponsor endorsements.</p>';
+            echo '<form method="post">';
+            wp_nonce_field('cison_fs_resend_email_' . md5($ref));
+            echo '<input type="hidden" name="cison_fs_resend_email" value="1" />';
+            echo '<input type="hidden" name="fs_ref" value="' . esc_attr($ref) . '" />';
+            submit_button(__('Resend Sponsorship Email', 'cison'), 'secondary');
+            echo '</form>';
+            echo '</div>';
+        }
 
         // Edit created-at form
         echo '<div class="cison-fs-detail__card cison-fs-detail__card--meta">';

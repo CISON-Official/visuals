@@ -1148,7 +1148,7 @@ function cison_fellowship_send_applicant_email($data, $token)
 
     $headers = array('Content-Type: text/html; charset=UTF-8');
 
-    wp_mail($email, $subject, $message_html, $headers);
+    return wp_mail($email, $subject, $message_html, $headers);
 }
 
 // ============================================================
