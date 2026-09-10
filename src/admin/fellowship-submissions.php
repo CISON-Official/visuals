@@ -66,6 +66,11 @@ class CISON_Fellowship_Submissions_Admin
                 $this->render_view_screen();
                 return;
 
+            case 'edit':
+                $this->handle_edit_save();
+                $this->render_edit_screen();
+                return;
+
             case 'list':
             default:
                 $this->render_list_screen();
@@ -86,6 +91,8 @@ class CISON_Fellowship_Submissions_Admin
             'not-found'       => array('error',   __('Record not found.', 'cison')),
             'date-updated'    => array('success', __('Created at date updated.', 'cison')),
             'date-error'      => array('error',   __('Invalid date format. Use YYYY-MM-DD HH:MM:SS.', 'cison')),
+            'saved'           => array('success', __('Submission updated.', 'cison')),
+            'save-error'      => array('error',   __('Could not save the changes. Please try again.', 'cison')),
         );
 
         if (!isset($messages[$key])) {
@@ -203,10 +210,17 @@ class CISON_Fellowship_Submissions_Admin
                 $s1 = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
                 $s2 = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
                 $view_url = admin_url('tools.php?page=' . self::PAGE_SLUG . '&action=view&ref=' . rawurlencode($row['reference_number']));
+                $edit_url = admin_url('tools.php?page=' . self::PAGE_SLUG . '&action=edit&ref=' . rawurlencode($row['reference_number']));
                 $full_name = cison_fellowship_get_full_name($row);
                 ?>
                 <tr>
-                    <td><a href="<?php echo esc_url($view_url); ?>" style="font-weight:700;color:#0f766e;text-decoration:none;"><?php echo esc_html($row['reference_number'] ?: 'N/A'); ?></a></td>
+                    <td>
+                        <a href="<?php echo esc_url($view_url); ?>" style="font-weight:700;color:#0f766e;text-decoration:none;"><?php echo esc_html($row['reference_number'] ?: 'N/A'); ?></a>
+                        <div class="row-actions">
+                            <span class="edit"><a href="<?php echo esc_url($edit_url); ?>"><?php esc_html_e('Edit', 'cison'); ?></a> | </span>
+                            <span class="view"><a href="<?php echo esc_url($view_url); ?>"><?php esc_html_e('View', 'cison'); ?></a></span>
+                        </div>
+                    </td>
                     <td><strong><?php echo esc_html($full_name); ?></strong><br><small><?php echo esc_html($row['phone'] ?: ''); ?></small></td>
                     <td><?php echo esc_html($row['email']); ?></td>
                     <td><?php echo esc_html($row['is_member'] ?: 'N/A'); ?>
@@ -321,7 +335,9 @@ class CISON_Fellowship_Submissions_Admin
             'cison_delete_fs_' . md5($ref)
         );
 
-        echo '<p><a href="' . esc_url($back_url) . '">&larr; ' . esc_html__('Back to list', 'cison') . '</a> | ';
+        echo '<p><a href="' . esc_url($back_url) . '">&larr; ' . esc_html__('Back to list', 'cison') . '</a> &nbsp; ';
+        $edit_url = admin_url('tools.php?page=' . self::PAGE_SLUG . '&action=edit&ref=' . rawurlencode($ref));
+        echo '<a href="' . esc_url($edit_url) . '" class="button button-primary">' . esc_html__('Edit', 'cison') . '</a> ';
         echo '<a href="' . esc_url($del_url) . '" class="button" onclick="return confirm(\'' . esc_attr__('Are you sure you want to delete this submission? This cannot be undone.', 'cison') . '\')">' . esc_html__('Delete', 'cison') . '</a></p>';
 
         // -- Cards output using the plugin's existing style classes --
@@ -444,6 +460,285 @@ class CISON_Fellowship_Submissions_Admin
         echo '</div>'; // detail
 
         echo cison_fellowship_submission_detail_styles();
+        echo '</div>';
+    }
+
+    /* ==============================================================
+     *  EDIT
+     * ============================================================== */
+
+    private function get_row($ref)
+    {
+        if (!$ref) {
+            return null;
+        }
+        global $wpdb;
+        $table = cison_fellowship_get_table_name();
+        return $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE reference_number = %s LIMIT 1", $ref), ARRAY_A);
+    }
+
+    /**
+     * Encode sponsor detail fields for storage. Returns an empty string when the
+     * sponsor has no meaningful data yet so the detail view keeps showing the
+     * "Awaiting sponsor endorsement" state.
+     */
+    private function sponsor_data_to_json($data)
+    {
+        $has_data = !empty(array_filter((array) $data, function ($v) {
+            return $v !== '' && $v !== null;
+        }));
+        return $has_data ? wp_json_encode($data) : '';
+    }
+
+    private function handle_edit_save()
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['cison_fs_edit_submit'])) {
+            return;
+        }
+
+        $ref = isset($_POST['fs_ref']) ? sanitize_text_field(wp_unslash($_POST['fs_ref'])) : '';
+        if (!$ref) {
+            return;
+        }
+
+        if (!wp_verify_nonce($_POST['_wpnonce'] ?? '', 'cison_fs_edit_' . md5($ref))) {
+            return;
+        }
+
+        $post = wp_unslash($_POST);
+
+        $required = array('first_name', 'last_name', 'email', 'phone', 'membership_number');
+        foreach ($required as $f) {
+            if (empty($post[$f])) {
+                $this->redirect('edit', array('ref' => $ref, 'fs_notice' => 'save-error'));
+            }
+        }
+
+        if (!is_email($post['email'])) {
+            $this->redirect('edit', array('ref' => $ref, 'fs_notice' => 'save-error'));
+        }
+
+        $created_at = isset($post['registration_date']) ? trim(sanitize_text_field($post['registration_date'])) : '';
+        if ($created_at !== '' && !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $created_at)) {
+            $this->redirect('edit', array('ref' => $ref, 'fs_notice' => 'date-error'));
+        }
+        if ($created_at === '') {
+            $created_at = $this->get_row($ref)['registration_date'] ?? current_time('mysql');
+        }
+
+        $updated_at = isset($post['updated_at']) ? trim(sanitize_text_field($post['updated_at'])) : '';
+        if ($updated_at !== '' && !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $updated_at)) {
+            $this->redirect('edit', array('ref' => $ref, 'fs_notice' => 'date-error'));
+        }
+
+        $nsa_fellow = in_array(strtolower($post['is_nsa_fellow'] ?? ''), array('yes', 'true', '1'), true);
+        $nsa_id     = strtoupper(trim($post['nsa_fellow_id'] ?? ''));
+
+        global $wpdb;
+        $table = cison_fellowship_get_table_name();
+
+        // Duplicate membership number check (excluding this record).
+        $mem = trim($post['membership_number']);
+        if ($wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table WHERE membership_number = %s AND membership_number != '' AND reference_number != %s LIMIT 1",
+            $mem,
+            $ref
+        ))) {
+            $this->redirect('edit', array('ref' => $ref, 'fs_notice' => 'save-error'));
+        }
+
+        if ($nsa_fellow && !empty($nsa_id) && $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table WHERE is_nsa_fellow = 'yes' AND nsa_fellow_id = %s AND nsa_fellow_id != '' AND reference_number != %s LIMIT 1",
+            $nsa_id,
+            $ref
+        ))) {
+            $this->redirect('edit', array('ref' => $ref, 'fs_notice' => 'save-error'));
+        }
+
+        // Existing sponsor data so signatures are preserved.
+        $existing = $this->get_row($ref);
+        $existing_s1 = !empty($existing['sponsor_1_data']) ? json_decode($existing['sponsor_1_data'], true) : array();
+        $existing_s2 = !empty($existing['sponsor_2_data']) ? json_decode($existing['sponsor_2_data'], true) : array();
+
+        $s1_data = array(
+            'name'             => isset($post['sponsor_1_name']) ? sanitize_text_field($post['sponsor_1_name']) : ($existing_s1['name'] ?? ''),
+            'membership_id'    => isset($post['sponsor_1_membership_id']) ? sanitize_text_field($post['sponsor_1_membership_id']) : ($existing_s1['membership_id'] ?? ''),
+            'membership_status' => isset($post['sponsor_1_membership_status']) ? sanitize_text_field($post['sponsor_1_membership_status']) : ($existing_s1['membership_status'] ?? ''),
+            'rank'             => isset($post['sponsor_1_rank']) ? sanitize_text_field($post['sponsor_1_rank']) : ($existing_s1['rank'] ?? ''),
+            'date'             => isset($post['sponsor_1_date']) ? sanitize_text_field($post['sponsor_1_date']) : ($existing_s1['date'] ?? ''),
+            'signature'        => isset($post['sponsor_1_signature']) ? sanitize_text_field($post['sponsor_1_signature']) : ($existing_s1['signature'] ?? ''),
+        );
+        $s2_data = array(
+            'name'             => isset($post['sponsor_2_name']) ? sanitize_text_field($post['sponsor_2_name']) : ($existing_s2['name'] ?? ''),
+            'membership_id'    => isset($post['sponsor_2_membership_id']) ? sanitize_text_field($post['sponsor_2_membership_id']) : ($existing_s2['membership_id'] ?? ''),
+            'membership_status' => isset($post['sponsor_2_membership_status']) ? sanitize_text_field($post['sponsor_2_membership_status']) : ($existing_s2['membership_status'] ?? ''),
+            'rank'             => isset($post['sponsor_2_rank']) ? sanitize_text_field($post['sponsor_2_rank']) : ($existing_s2['rank'] ?? ''),
+            'date'             => isset($post['sponsor_2_date']) ? sanitize_text_field($post['sponsor_2_date']) : ($existing_s2['date'] ?? ''),
+            'signature'        => isset($post['sponsor_2_signature']) ? sanitize_text_field($post['sponsor_2_signature']) : ($existing_s2['signature'] ?? ''),
+        );
+
+        $data = array(
+            'is_member'              => sanitize_text_field($post['membership_status'] ?? ''),
+            'is_nsa_fellow'          => $nsa_fellow ? 'yes' : 'no',
+            'nsa_fellow_id'          => $nsa_fellow ? $nsa_id : '',
+            'membership_category'    => sanitize_text_field($post['membership_category'] ?? ''),
+            'membership_number'      => $mem,
+            'title'                  => sanitize_text_field($post['title'] ?? ''),
+            'first_name'             => sanitize_text_field($post['first_name']),
+            'middle_name'            => sanitize_text_field($post['middle_name'] ?? ''),
+            'last_name'              => sanitize_text_field($post['last_name']),
+            'email'                  => strtolower(sanitize_email($post['email'])),
+            'phone'                  => sanitize_text_field($post['phone']),
+            'gender'                 => sanitize_text_field($post['gender'] ?? ''),
+            'date_of_birth'          => !empty($post['date_of_birth']) ? sanitize_text_field($post['date_of_birth']) : null,
+            'nationality'            => sanitize_text_field($post['nationality'] ?? ''),
+            'occupation'             => sanitize_text_field($post['occupation'] ?? ''),
+            'designation'            => sanitize_text_field($post['designation'] ?? ''),
+            'employer'               => sanitize_text_field($post['employer'] ?? ''),
+            'street'                 => sanitize_text_field($post['street'] ?? ''),
+            'city'                   => sanitize_text_field($post['city'] ?? ''),
+            'state'                  => sanitize_text_field($post['state'] ?? ''),
+            'country'                => sanitize_text_field($post['country'] ?? ''),
+            'years_of_practice'      => sanitize_text_field($post['years_of_practice'] ?? ''),
+            'area_of_practice'       => sanitize_textarea_field($post['area_of_practice'] ?? ''),
+            'academic_qualifications' => sanitize_textarea_field($post['academic_qualifications'] ?? ''),
+            'professional_experience' => sanitize_textarea_field($post['professional_experience'] ?? ''),
+            'publications'           => sanitize_textarea_field($post['publications'] ?? ''),
+            'order_id'               => sanitize_text_field($post['order_id'] ?? ''),
+            'product_ids'            => sanitize_text_field($post['product_ids'] ?? ''),
+            'payment_status'         => sanitize_text_field($post['payment_status'] ?? 'pending'),
+            'application_status'     => sanitize_text_field($post['application_status'] ?? 'submitted'),
+            'registration_date'      => $created_at,
+            'updated_at'             => $updated_at !== '' ? $updated_at : current_time('mysql'),
+            'ip_address'             => sanitize_text_field($post['ip_address'] ?? ''),
+            'sponsor_1_status'       => sanitize_text_field($post['sponsor_1_status'] ?? 'pending'),
+            'sponsor_2_status'       => sanitize_text_field($post['sponsor_2_status'] ?? 'pending'),
+            'sponsor_1_data'         => $this->sponsor_data_to_json($s1_data),
+            'sponsor_2_data'         => $this->sponsor_data_to_json($s2_data),
+        );
+
+        $updated = $wpdb->update($table, $data, array('reference_number' => $ref));
+
+        $this->redirect('view', array('ref' => $ref, 'fs_notice' => false === $updated ? 'save-error' : 'saved'));
+    }
+
+    private function render_edit_screen()
+    {
+        $ref  = isset($_REQUEST['ref']) ? sanitize_text_field(wp_unslash($_REQUEST['ref'])) : '';
+        $row  = $this->get_row($ref);
+        $back_url = admin_url('tools.php?page=' . self::PAGE_SLUG);
+        $view_url = admin_url('tools.php?page=' . self::PAGE_SLUG . '&action=view&ref=' . rawurlencode($ref));
+
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__('Edit Fellowship Submission', 'cison') . '</h1>';
+        echo '<p><a href="' . esc_url($back_url) . '">&larr; ' . esc_html__('Back to list', 'cison') . '</a> | ' .
+            '<a href="' . esc_url($view_url) . '">' . esc_html__('View submission', 'cison') . '</a></p>';
+
+        if (!$row) {
+            echo '<p>' . esc_html__('Record not found.', 'cison') . '</p>';
+            echo '</div>';
+            return;
+        }
+
+        if (isset($_GET['fs_notice'])) {
+            $this->print_notice(sanitize_key(wp_unslash($_GET['fs_notice'])));
+        }
+
+        echo '<form method="post">';
+        wp_nonce_field('cison_fs_edit_' . md5($ref));
+        echo '<input type="hidden" name="cison_fs_edit_submit" value="1" />';
+        echo '<input type="hidden" name="fs_ref" value="' . esc_attr($ref) . '" />';
+
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_text('reference_number', __('Reference Number', 'cison'), $row['reference_number'], false, '', true);
+        $this->form_row_text('id', __('ID', 'cison'), $row['id'], false, '', true);
+        echo '</tbody></table>';
+
+        echo '<h2>' . esc_html__('Personal Information', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_select('title', __('Title', 'cison'), cison_fellowship_get_titles(), $row['title']);
+        $this->form_row_text('first_name', __('First Name', 'cison'), $row['first_name'], true);
+        $this->form_row_text('middle_name', __('Middle Name', 'cison'), $row['middle_name']);
+        $this->form_row_text('last_name', __('Last Name', 'cison'), $row['last_name'], true);
+        $this->form_row_text('email', __('Email', 'cison'), $row['email'], true);
+        $this->form_row_text('phone', __('Phone', 'cison'), $row['phone'], true);
+        $this->form_row_select('gender', __('Gender', 'cison'), cison_fellowship_get_genders(), $row['gender']);
+        $this->form_row_text('date_of_birth', __('Date of Birth', 'cison'), $row['date_of_birth'], false, 'YYYY-MM-DD');
+        $this->form_row_text('nationality', __('Nationality', 'cison'), $row['nationality']);
+        echo '</tbody></table>';
+
+        echo '<h2>' . esc_html__('Address', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_text('street', __('Street', 'cison'), $row['street']);
+        $this->form_row_text('city', __('City', 'cison'), $row['city']);
+        $this->form_row_text('state', __('State', 'cison'), $row['state']);
+        $this->form_row_text('country', __('Country', 'cison'), $row['country']);
+        echo '</tbody></table>';
+
+        echo '<h2>' . esc_html__('Professional', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_text('occupation', __('Occupation', 'cison'), $row['occupation']);
+        $this->form_row_text('designation', __('Designation', 'cison'), $row['designation']);
+        $this->form_row_text('employer', __('Employer / Institution', 'cison'), $row['employer']);
+        $this->form_row_text('years_of_practice', __('Years of Practice', 'cison'), $row['years_of_practice']);
+        $this->form_row_textarea('area_of_practice', __('Area of Statistics', 'cison'), '', $row['area_of_practice']);
+        echo '</tbody></table>';
+
+        echo '<h2>' . esc_html__('Membership', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_select('membership_status', __('Membership Status', 'cison'), array('member', 'non-member'), $row['is_member']);
+        $this->form_row_select('membership_category', __('Membership Category', 'cison'), cison_fellowship_get_membership_categories(), $row['membership_category']);
+        $this->form_row_text('membership_number', __('Membership Number', 'cison'), $row['membership_number'], true);
+        $this->form_row_select('is_nsa_fellow', __('NSA Fellow?', 'cison'), array('no', 'yes'), $row['is_nsa_fellow']);
+        $this->form_row_text('nsa_fellow_id', __('NSA Fellow ID', 'cison'), $row['nsa_fellow_id']);
+        echo '</tbody></table>';
+
+        echo '<h2>' . esc_html__('Qualifications & Experience', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_textarea('academic_qualifications', __('Academic Qualifications', 'cison'), 'One per line.', $row['academic_qualifications']);
+        $this->form_row_textarea('professional_experience', __('Professional Experience', 'cison'), '', $row['professional_experience']);
+        $this->form_row_textarea('publications', __('Publications / Contribution', 'cison'), '', $row['publications']);
+        echo '</tbody></table>';
+
+        $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
+        $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
+
+        echo '<h2>' . esc_html__('Sponsor 1', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_select('sponsor_1_status', __('Sponsor 1 Status', 'cison'), array('pending', 'submitted', 'approved', 'rejected'), $row['sponsor_1_status']);
+        $this->form_row_text('sponsor_1_name', __('Full Name', 'cison'), $s1_data['name'] ?? '');
+        $this->form_row_text('sponsor_1_membership_id', __('Membership ID', 'cison'), $s1_data['membership_id'] ?? '');
+        $this->form_row_text('sponsor_1_membership_status', __('Membership Status', 'cison'), $s1_data['membership_status'] ?? '');
+        $this->form_row_text('sponsor_1_rank', __('Rank', 'cison'), $s1_data['rank'] ?? '');
+        $this->form_row_text('sponsor_1_date', __('Date', 'cison'), $s1_data['date'] ?? '');
+        $this->form_row_text('sponsor_1_signature', __('Signature URL', 'cison'), $s1_data['signature'] ?? '');
+        echo '</tbody></table>';
+
+        echo '<h2>' . esc_html__('Sponsor 2', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_select('sponsor_2_status', __('Sponsor 2 Status', 'cison'), array('pending', 'submitted', 'approved', 'rejected'), $row['sponsor_2_status']);
+        $this->form_row_text('sponsor_2_name', __('Full Name', 'cison'), $s2_data['name'] ?? '');
+        $this->form_row_text('sponsor_2_membership_id', __('Membership ID', 'cison'), $s2_data['membership_id'] ?? '');
+        $this->form_row_text('sponsor_2_membership_status', __('Membership Status', 'cison'), $s2_data['membership_status'] ?? '');
+        $this->form_row_text('sponsor_2_rank', __('Rank', 'cison'), $s2_data['rank'] ?? '');
+        $this->form_row_text('sponsor_2_date', __('Date', 'cison'), $s2_data['date'] ?? '');
+        $this->form_row_text('sponsor_2_signature', __('Signature URL', 'cison'), $s2_data['signature'] ?? '');
+        echo '</tbody></table>';
+
+        echo '<h2>' . esc_html__('Status & Metadata', 'cison') . '</h2>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+        $this->form_row_select('payment_status', __('Payment Status', 'cison'), array('pending', 'paid', 'failed', 'refunded'), $row['payment_status']);
+        $this->form_row_select('application_status', __('Application Status', 'cison'), array('submitted', 'under_review', 'approved', 'rejected'), $row['application_status']);
+        $this->form_row_text('order_id', __('Order ID', 'cison'), $row['order_id']);
+        $this->form_row_text('product_ids', __('Product IDs', 'cison'), $row['product_ids']);
+        $this->form_row_text('ip_address', __('IP Address', 'cison'), $row['ip_address']);
+        $this->form_row_text('registration_date', __('Created At', 'cison'), $row['registration_date'], false, 'YYYY-MM-DD HH:MM:SS');
+        $this->form_row_text('updated_at', __('Last Updated', 'cison'), $row['updated_at'], false, 'YYYY-MM-DD HH:MM:SS');
+        echo '</tbody></table>';
+
+        submit_button(__('Save Changes', 'cison'), 'primary', 'cison_fs_edit_submit');
+
+        echo '</form>';
         echo '</div>';
     }
 
@@ -674,29 +969,32 @@ class CISON_Fellowship_Submissions_Admin
     /*  Form row helpers                                               */
     /* -------------------------------------------------------------- */
 
-    private function form_row_text($name, $label, $value = '', $required = false, $placeholder = '')
+    private function form_row_text($name, $label, $value = '', $required = false, $placeholder = '', $readonly = false)
     {
         $req = $required ? ' <span class="description">*</span>' : '';
+        $ro  = $readonly ? ' readonly' : '';
         printf(
             '<tr><th scope="row"><label for="cison_fs_%1$s">%2$s%3$s</label></th><td>' .
-            '<input type="text" id="cison_fs_%1$s" name="%1$s" value="%4$s" class="regular-text" %5$s%6$s /></td></tr>',
+            '<input type="text" id="cison_fs_%1$s" name="%1$s" value="%4$s" class="regular-text" %5$s%6$s%7$s /></td></tr>',
             esc_attr($name),
             esc_html($label),
             $req,
             esc_attr($value),
             $required ? ' required' : '',
-            $placeholder ? ' placeholder="' . esc_attr($placeholder) . '"' : ''
+            $placeholder ? ' placeholder="' . esc_attr($placeholder) . '"' : '',
+            $ro
         );
     }
 
-    private function form_row_textarea($name, $label, $hint = '')
+    private function form_row_textarea($name, $label, $hint = '', $value = '')
     {
         $hint_html = $hint ? '<p class="description">' . esc_html($hint) . '</p>' : '';
         printf(
             '<tr><th scope="row"><label for="cison_fs_%1$s">%2$s</label></th><td>' .
-            '<textarea id="cison_fs_%1$s" name="%1$s" class="large-text" rows="4"></textarea>%3$s</td></tr>',
+            '<textarea id="cison_fs_%1$s" name="%1$s" class="large-text" rows="4">%3$s</textarea>%4$s</td></tr>',
             esc_attr($name),
             esc_html($label),
+            esc_textarea($value),
             $hint_html
         );
     }
