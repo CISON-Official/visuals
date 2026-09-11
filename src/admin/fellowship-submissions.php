@@ -394,7 +394,15 @@ class CISON_Fellowship_Submissions_Admin
 
         $token = $row['sponsor_token'] ?? '';
         if (empty($token)) {
-            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-error', 'fs_msg' => __('No sponsor token exists for this submission.', 'cison')));
+            // Custom/legacy submissions may lack a token; generate and store one so the sponsor link works.
+            global $wpdb;
+            $token = cison_fellowship_generate_token();
+            $wpdb->update(
+                cison_fellowship_get_table_name(),
+                array('sponsor_token' => $token, 'updated_at' => current_time('mysql')),
+                array('reference_number' => $ref)
+            );
+            $row['sponsor_token'] = $token;
         }
 
         if (empty($row['email']) || !is_email($row['email'])) {
@@ -1018,7 +1026,7 @@ class CISON_Fellowship_Submissions_Admin
             'registration_date'    => $registration_date,
             'updated_at'           => current_time('mysql'),
             'ip_address'           => '',
-            'sponsor_token'        => '',
+            'sponsor_token'        => cison_fellowship_generate_token(),
             'sponsor_1_status'     => 'pending',
             'sponsor_2_status'     => 'pending',
         );
