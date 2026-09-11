@@ -49,6 +49,13 @@ class CISON_Fellowship_Submissions_Admin
             wp_die(esc_html__('You do not have permission to access this page.', 'cison'));
         }
 
+        if (isset($_GET['fs_clear_mail_log'])) {
+            check_admin_referer('cison_fs_clear_mail_log');
+            delete_option('cison_mail_failure_log');
+            wp_safe_redirect(admin_url('tools.php?page=' . self::PAGE_SLUG));
+            exit;
+        }
+
         $action = isset($_REQUEST['action']) ? sanitize_key($_REQUEST['action']) : 'list';
 
         switch ($action) {
@@ -109,6 +116,16 @@ class CISON_Fellowship_Submissions_Admin
             esc_attr($type),
             esc_html($text)
         );
+
+        if (!empty($_GET['fs_msg'])) {
+            $detail = sanitize_text_field(wp_unslash($_GET['fs_msg']));
+            printf(
+                '<div class="notice notice-%1$s is-dismissible"><p><strong>%2$s</strong></p>%3$s</div>',
+                esc_attr($type),
+                esc_html($detail),
+                $key === 'email-error' ? '<p style="margin-bottom:0;">' . __('Tip: verify your SMTP / mail server settings, from address, and recipient address.', 'cison') . '</p>' : ''
+            );
+        }
     }
 
     private function redirect($action = 'list', $extra = array())
@@ -172,6 +189,8 @@ class CISON_Fellowship_Submissions_Admin
         if (isset($_GET['fs_notice'])) {
             $this->print_notice(sanitize_key(wp_unslash($_GET['fs_notice'])));
         }
+
+        $this->render_mail_failures();
 
         echo '<form method="get">';
         echo '<input type="hidden" name="page" value="' . esc_attr(self::PAGE_SLUG) . '" />';
@@ -267,6 +286,45 @@ class CISON_Fellowship_Submissions_Admin
         echo '</div>';
     }
 
+    /**
+     * Display the most recent wp_mail() failures logged by the plugin, so admins
+     * can see why fellowship emails are not being delivered.
+     */
+    private function render_mail_failures()
+    {
+        $log = get_option('cison_mail_failure_log', array());
+        if (empty($log) || !is_array($log)) {
+            return;
+        }
+
+        echo '<div style="margin-bottom:16px;padding:12px 14px;background:#fff8e5;border:1px solid #f0c33c;border-left-width:4px;border-radius:4px;">';
+        echo '<h2 style="font-size:1.1em;margin:0 0 8px;">' . esc_html__('Recent email failures', 'cison') . '</h2>';
+        echo '<p style="margin:0 0 8px;color:#555;">' .
+            esc_html__('These wp_mail() calls failed recently. Check your mail/SMTP configuration.', 'cison') . '</p>';
+
+        echo '<table class="widefat striped" style="max-width:100%;"><thead><tr>' .
+            '<th>' . esc_html__('Time', 'cison') . '</th>' .
+            '<th>' . esc_html__('To', 'cison') . '</th>' .
+            '<th>' . esc_html__('Subject', 'cison') . '</th>' .
+            '<th>' . esc_html__('Error', 'cison') . '</th>' .
+            '</tr></thead><tbody>';
+
+        foreach (array_reverse($log) as $entry) {
+            echo '<tr>';
+            echo '<td>' . esc_html($entry['time'] ?? '') . '</td>';
+            echo '<td>' . esc_html($entry['to'] ?? '') . '</td>';
+            echo '<td>' . esc_html($entry['subject'] ?? '') . '</td>';
+            echo '<td><code>' . esc_html($entry['error'] ?? '') . '</code></td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+        echo '<p style="margin:8px 0 0;"><a class="button button-small" href="' .
+            esc_url(wp_nonce_url(add_query_arg('fs_clear_mail_log', '1'), 'cison_fs_clear_mail_log')) . '">' .
+            esc_html__('Clear log', 'cison') . '</a></p>';
+        echo '</div>';
+    }
+
     /* ==============================================================
      *  VIEW
      * ============================================================== */
@@ -336,12 +394,38 @@ class CISON_Fellowship_Submissions_Admin
 
         $token = $row['sponsor_token'] ?? '';
         if (empty($token)) {
-            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-error'));
+            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-error', 'fs_msg' => __('No sponsor token exists for this submission.', 'cison')));
         }
+
+        if (empty($row['email']) || !is_email($row['email'])) {
+            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-error', 'fs_msg' => __('The applicant email address is invalid or empty:', 'cison') . ' ' . ($row['email'] ?? 'empty')));
+        }
+
+        // Capture the underlying mailer error (e.g. SMTP details) from wp_mail_failed.
+        $mail_error = '';
+        $has_mail_error = false;
+        add_action('wp_mail_failed', function ($wp_error) use (&$mail_error, &$has_mail_error) {
+            if (is_wp_error($wp_error)) {
+                $has_mail_error = true;
+                $mail_error   = $wp_error->get_error_message();
+                $data = $wp_error->get_error_data();
+                if (is_array($data) && !empty($data['phpmailer_exception']) && method_exists($data['phpmailer_exception'], 'getMessage')) {
+                    $mail_error = $data['phpmailer_exception']->getMessage();
+                }
+            }
+        });
 
         $sent = cison_fellowship_send_applicant_email($row, $token);
 
-        $this->redirect('view', array('ref' => $ref, 'fs_notice' => $sent ? 'email-sent' : 'email-error'));
+        if ($sent) {
+            $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-sent'));
+        }
+
+        $fallback = ($has_mail_error && $mail_error !== '')
+            ? $mail_error
+            : __('wp_mail() returned false without a detailed error. Check your site mail settings (SMTP provider, credentials, port/encryption, and from address) and that the hosting server allows outgoing connections on the mail port.', 'cison');
+
+        $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-error', 'fs_msg' => $fallback));
     }
 
     private function render_view_screen()

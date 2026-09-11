@@ -969,13 +969,34 @@ function cison_fellowship_handle_send_submission_email()
     );
     $attachments = cison_fellowship_get_signature_attachments($row);
 
+    $mail_error = '';
+    add_action('wp_mail_failed', function ($wp_error) use (&$mail_error) {
+        if (is_wp_error($wp_error)) {
+            $mail_error = $wp_error->get_error_message();
+            $data = $wp_error->get_error_data();
+            if (is_array($data) && !empty($data['phpmailer_exception']) && method_exists($data['phpmailer_exception'], 'getMessage')) {
+                $mail_error = $data['phpmailer_exception']->getMessage();
+            }
+        }
+    });
+
     foreach ($emails as $email) {
         if (is_email($email)) {
             $sent = wp_mail($email, $subject, $message, $headers, $attachments) || $sent;
         }
     }
 
-    $redirect = add_query_arg(array(($sent ? 'fs_email_sent' : 'fs_email_error') => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL);
+    $redirect_args = array('fs_ref' => rawurlencode($ref));
+    if ($sent) {
+        $redirect_args['fs_email_sent'] = '1';
+    } else {
+        $redirect_args['fs_email_error'] = '1';
+        if ($mail_error !== '') {
+            $redirect_args['fs_email_msg'] = $mail_error;
+        }
+    }
+
+    $redirect = add_query_arg($redirect_args, CISON_FELLOWSHIP_DETAIL_URL);
     wp_safe_redirect($redirect);
     exit;
 }
@@ -1150,6 +1171,57 @@ function cison_fellowship_send_applicant_email($data, $token)
 
     return wp_mail($email, $subject, $message_html, $headers);
 }
+
+// ============================================================
+// MAIL FAILURE LOGGING
+// ============================================================
+
+/**
+ * Extract a human-readable failure reason from the WP_Error fired by wp_mail().
+ */
+function cison_fellowship_mail_error_reason($wp_error)
+{
+    $message = $wp_error->get_error_message();
+    $data    = is_wp_error($wp_error) ? $wp_error->get_error_data() : null;
+
+    if (is_array($data) && !empty($data['phpmailer_exception']) && method_exists($data['phpmailer_exception'], 'getMessage')) {
+        $ex_message = $data['phpmailer_exception']->getMessage();
+        if ($ex_message !== '') {
+            $message = $ex_message;
+        }
+    }
+
+    return $message !== '' ? $message : 'wp_mail() failed without a detailed error message.';
+}
+
+/**
+ * Record every failed wp_mail() call so admins can see why emails are not
+ * being delivered, even for hooks fired outside the admin area.
+ */
+function cison_fellowship_log_mail_failures($wp_error)
+{
+    if (!is_wp_error($wp_error)) {
+        return;
+    }
+
+    $log  = get_option('cison_mail_failure_log', array());
+    if (!is_array($log)) {
+        $log = array();
+    }
+
+    $error_data = $wp_error->get_error_data();
+
+    $log[] = array(
+        'time'    => current_time('mysql'),
+        'to'      => isset($error_data['to']) ? sanitize_text_field($error_data['to']) : '',
+        'subject' => isset($error_data['subject']) ? sanitize_text_field($error_data['subject']) : '',
+        'error'   => cison_fellowship_mail_error_reason($wp_error),
+    );
+
+    $log = array_slice($log, -20);
+    update_option('cison_mail_failure_log', $log);
+}
+add_action('wp_mail_failed', 'cison_fellowship_log_mail_failures');
 
 // ============================================================
 // SHORTCODE: MAIN FORM
@@ -1907,8 +1979,12 @@ function cison_fellowship_submission_detail_shortcode()
         <?php if (isset($_GET['fs_email_sent'])): ?>
             <div class="cison-fs-detail__message cison-fs-detail__message--success">Email sent successfully.</div>
         <?php elseif (isset($_GET['fs_email_error'])): ?>
-            <div class="cison-fs-detail__message cison-fs-detail__message--error">There was an error sending the email. Please
-                check the recipient addresses and try again.</div>
+            <div class="cison-fs-detail__message cison-fs-detail__message--error">
+                There was an error sending the email. Please check the recipient addresses and try again.
+                <?php if (!empty($_GET['fs_email_msg'])): ?>
+                    <br><strong>Reason:</strong> <?php echo esc_html(wp_unslash($_GET['fs_email_msg'])); ?>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
 
         <div class="cison-fs-detail__header">
