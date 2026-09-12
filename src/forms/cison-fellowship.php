@@ -1768,7 +1768,7 @@ function cison_fellowship_render_sponsor_fields($num, $data, $editable)
 
 function cison_fellowship_submissions_shortcode($atts)
 {
-    $allowed_user_ids = array(216, 284, 180);
+    $allowed_user_ids = array(216, 284, 180, 284);
     if (!current_user_can('manage_options') && !in_array(get_current_user_id(), $allowed_user_ids)) {
         return '<p>You do not have permission to view fellowship submissions.</p>';
     }
