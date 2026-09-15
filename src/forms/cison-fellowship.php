@@ -1741,12 +1741,18 @@ function cison_fellowship_form_shortcode()
                     <h4>Certificates</h4>
                     <div class="cison-fs__grid">
                         <div>
-                            <label for="cison_fs_certificates">Upload Certificates</label>
-                            <input id="cison_fs_certificates" type="file" name="certificates[]"
-                                accept=".jpg,.jpeg,.png,.gif,.webp,.pdf" multiple>
-                            <span class="cison-fs__help">Upload as many certificates as you like (e.g. professional
-                                licences, qualifications, certifications). Accepted formats: JPG, PNG, GIF, PDF. Max
-                                size: 2MB each.</span>
+                            <label>Upload Certificates</label>
+                            <span class="cison-fs__help">Add a certificate below and use "+ Add Certificate" to upload
+                                more. Accepted formats: JPG, PNG, GIF, PDF. Max size: 2MB each.</span>
+                            <div id="cison-fs-certs" class="cison-fs__cert-list">
+                                <div class="cison-fs__cert-row">
+                                    <input type="file" name="certificates[]"
+                                        accept=".jpg,.jpeg,.png,.gif,.webp,.pdf">
+                                    <button type="button" class="cison-fs__cert-remove" title="Remove">&times;</button>
+                                </div>
+                            </div>
+                            <button type="button" id="cison-fs-add-cert" class="cison-fs__cert-add">+ Add
+                                Certificate</button>
                         </div>
                     </div>
                 </div>
@@ -2775,6 +2781,65 @@ function cison_fellowship_render_styles()
             background: #f0fdfa;
         }
 
+        .cison-fs__cert-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .cison-fs__cert-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .cison-fs__cert-row input[type="file"] {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            background: #f8fafc;
+        }
+
+        .cison-fs__cert-remove {
+            width: 28px;
+            height: 28px;
+            border: 0;
+            border-radius: 6px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cison-fs__cert-remove:hover {
+            background: #fecaca;
+        }
+
+        .cison-fs__cert-add {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 6px 12px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 6px;
+            background: transparent;
+            color: #0f766e;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cison-fs__cert-add:hover {
+            border-color: #0f766e;
+            background: #f0fdfa;
+        }
+
         .cison-fs__nsa-fellow-wrap {
             margin-top: 16px;
             padding-top: 16px;
@@ -3417,6 +3482,31 @@ function cison_fellowship_render_scripts($is_member = false, $is_nsa_fellow = fa
                         if (row) {
                             row.remove();
                             updateQualIndices();
+                        }
+                    }
+                });
+            }
+
+            // Certificates add/remove
+            var certsList = container.querySelector("#cison-fs-certs");
+            var addCertBtn = container.querySelector("#cison-fs-add-cert");
+
+            if (addCertBtn) {
+                addCertBtn.addEventListener("click", function () {
+                    var row = document.createElement("div");
+                    row.className = "cison-fs__cert-row";
+                    row.innerHTML = '<input type="file" name="certificates[]" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf">' +
+                        '<button type="button" class="cison-fs__cert-remove" title="Remove">&times;</button>';
+                    certsList.appendChild(row);
+                });
+            }
+
+            if (certsList) {
+                certsList.addEventListener("click", function (e) {
+                    if (e.target.classList.contains("cison-fs__cert-remove")) {
+                        var row = e.target.closest(".cison-fs__cert-row");
+                        if (row) {
+                            row.remove();
                         }
                     }
                 });
