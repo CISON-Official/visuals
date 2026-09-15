@@ -115,6 +115,7 @@ function cison_fellowship_get_form_defaults()
         'sponsor_2_rank' => '',
         'sponsor_2_signature' => '',
         'sponsor_2_date' => '',
+        'cv' => '',
     );
 }
 
@@ -368,7 +369,44 @@ function cison_fellowship_handle_certificates_upload()
     return !empty($uploaded) ? $uploaded : null;
 }
 
-function cison_fellowship_validate($data)
+function cison_fellowship_handle_cv_upload()
+{
+    if (empty($_FILES['cv']) || $_FILES['cv']['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $allowed_exts  = array('pdf', 'doc', 'docx', 'txt');
+    $max_size      = 5 * 1024 * 1024;
+
+    $file = $_FILES['cv'];
+
+    $filetype = wp_check_filetype($file['name']);
+    if (!in_array(strtolower($filetype['ext']), $allowed_exts, true)) {
+        return null;
+    }
+
+    if ((int) $file['size'] > $max_size) {
+        return null;
+    }
+
+    $upload_dir = wp_upload_dir();
+    $cv_dir = $upload_dir['path'] . '/fellowship_cv';
+
+    if (!file_exists($cv_dir)) {
+        wp_mkdir_p($cv_dir);
+    }
+
+    $filename = 'cv_' . time() . '_' . sanitize_file_name($file['name']);
+    $filepath = $cv_dir . '/' . $filename;
+
+    if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        return $upload_dir['url'] . '/fellowship_cv/' . $filename;
+    }
+
+    return null;
+}
+
+function cison_fellowship_validate($data, $edit_id = 0)
 {
     $errors = array();
 
@@ -395,6 +433,15 @@ function cison_fellowship_validate($data)
     global $wpdb;
     $table_name = cison_fellowship_get_table_name();
 
+    // When editing an existing application, exclude the applicant's own row
+    // from uniqueness checks below.
+    $id_exclude_sql  = '';
+    $id_exclude_args = array();
+    if ($edit_id > 0) {
+        $id_exclude_sql  = ' AND id != %d';
+        $id_exclude_args = array((int) $edit_id);
+    }
+
     $member_id = trim($data['membership_number'] ?? '');
     if (empty($member_id)) {
         $errors[] = 'CISON membership number is required.';
@@ -404,11 +451,38 @@ function cison_fellowship_validate($data)
             $errors[] = 'The CISON membership number is not recognized. Please check it and try again.';
         } elseif (
             $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM $table_name WHERE membership_number = %s AND membership_number != '' LIMIT 1",
-                $member_id
+                "SELECT id FROM $table_name WHERE membership_number = %s AND membership_number != '' $id_exclude_sql LIMIT 1",
+                array_merge(array($member_id), $id_exclude_args)
             ))
         ) {
             $errors[] = 'This CISON membership number has already been used for a fellowship application.';
+        }
+    }
+
+    // A CV is only mandatory when the application does not already have one
+    // (kept from the original submission while editing).
+    $existing_cv = '';
+    if ($edit_id > 0) {
+        $existing_cv = trim((string) $wpdb->get_var($wpdb->prepare(
+            "SELECT cv FROM $table_name WHERE id = %d",
+            (int) $edit_id
+        )));
+    }
+
+    $cv_uploaded = !empty($_FILES['cv'])
+        && is_array($_FILES['cv'])
+        && ($_FILES['cv']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK;
+
+    if (!$cv_uploaded && $existing_cv === '') {
+        $errors[] = 'A curriculum vitae (CV) is required.';
+    }
+    if ($cv_uploaded) {
+        $cv_type = wp_check_filetype($_FILES['cv']['name']);
+        if (!in_array(strtolower($cv_type['ext']), array('pdf', 'doc', 'docx', 'txt'), true)) {
+            $errors[] = 'The CV must be a PDF, DOC, DOCX or TXT file.';
+        }
+        if ((int) ($_FILES['cv']['size'] ?? 0) > 5 * 1024 * 1024) {
+            $errors[] = 'The CV file must be 5MB or smaller.';
         }
     }
 
@@ -421,9 +495,8 @@ function cison_fellowship_validate($data)
                 $errors[] = 'The NSA fellow ID provided is not valid. Please check it and try again.';
             } elseif (
                 $wpdb->get_var($wpdb->prepare(
-                    "SELECT id FROM $table_name WHERE is_nsa_fellow = %s AND nsa_fellow_id = %s AND nsa_fellow_id != '' LIMIT 1",
-                    'yes',
-                    strtoupper($nsa_id)
+                    "SELECT id FROM $table_name WHERE is_nsa_fellow = %s AND nsa_fellow_id = %s AND nsa_fellow_id != '' $id_exclude_sql LIMIT 1",
+                    array_merge(array('yes', strtoupper($nsa_id)), $id_exclude_args)
                 ))
             ) {
                 $errors[] = 'This NSA fellow ID has already been used for a fellowship application.';
@@ -612,6 +685,116 @@ function cison_fellowship_sponsor_link($token)
     return add_query_arg('token', $token, CISON_FELLOWSHIP_FORM_URL);
 }
 
+/**
+ * Derive an applicant-only edit key from the sponsor token. The key is not
+ * stored anywhere; it is recomputed when an edit link is opened, so the link
+ * is self-contained and unguessable.
+ */
+function cison_fellowship_edit_key($token)
+{
+    return wp_hash($token . '|edit');
+}
+
+function cison_fellowship_edit_link($row)
+{
+    return add_query_arg(
+        array(
+            'edit' => '1',
+            'ref'  => $row['reference_number'] ?? '',
+            'key'  => cison_fellowship_edit_key($row['sponsor_token'] ?? ''),
+        ),
+        CISON_FELLOWSHIP_FORM_URL
+    );
+}
+
+function cison_fellowship_get_application_by_reference($reference_number)
+{
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    return $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM $table_name WHERE reference_number = %s LIMIT 1", $reference_number),
+        ARRAY_A
+    );
+}
+
+/**
+ * Map a saved application row back to the values shape the application form
+ * expects, so the applicant can review and correct their details.
+ */
+function cison_fellowship_map_db_to_form($row)
+{
+    $qualifications = array();
+    $quals_string = trim((string) ($row['academic_qualifications'] ?? ''));
+    if ($quals_string !== '') {
+        foreach (explode("\n", $quals_string) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $parts = array_map('trim', explode('|', $line));
+            $qualifications[] = array(
+                'institution' => $parts[0] ?? '',
+                'degree'      => $parts[1] ?? '',
+                'year'        => $parts[2] ?? '',
+            );
+        }
+    }
+    if (empty($qualifications)) {
+        $qualifications = array(array('institution' => '', 'degree' => '', 'year' => ''));
+    }
+
+    return array_merge(cison_fellowship_get_form_defaults(), array(
+        'title'                  => $row['title'] ?? '',
+        'first_name'             => $row['first_name'] ?? '',
+        'middle_name'            => $row['middle_name'] ?? '',
+        'last_name'              => $row['last_name'] ?? '',
+        'email'                  => $row['email'] ?? '',
+        'phone'                  => $row['phone'] ?? '',
+        'gender'                 => $row['gender'] ?? '',
+        'date_of_birth'          => $row['date_of_birth'] ?? '',
+        'nationality'            => $row['nationality'] ?? '',
+        'occupation'             => $row['occupation'] ?? '',
+        'designation'            => $row['designation'] ?? '',
+        'employer'               => $row['employer'] ?? '',
+        'years_of_practice'      => $row['years_of_practice'] ?? '',
+        'area_of_practice'       => $row['area_of_practice'] ?? '',
+        'street'                 => $row['street'] ?? '',
+        'city'                   => $row['city'] ?? '',
+        'state'                  => $row['state'] ?? '',
+        'country'                => $row['country'] ?? 'NG',
+        'membership_status'      => $row['is_member'] ?? '',
+        'membership_category'    => $row['membership_category'] ?? '',
+        'membership_number'      => $row['membership_number'] ?? '',
+        'nsa_fellow'             => $row['is_nsa_fellow'] ?? '',
+        'nsa_fellow_id'          => $row['nsa_fellow_id'] ?? '',
+        'professional_experience' => $row['professional_experience'] ?? '',
+        'publications'           => $row['publications'] ?? '',
+        'academic_qualifications' => $qualifications,
+        'cv'                     => $row['cv'] ?? '',
+        'signature'              => $row['signature'] ?? '',
+        'certificates'           => $row['certificates'] ?? '',
+    ));
+}
+
+/**
+ * Fee-bearing fields the applicant cannot change after submission. Also
+ * carries over stored file values so they are preserved when no new file is
+ * uploaded during an edit.
+ */
+function cison_fellowship_locked_edit_values($row)
+{
+    return array(
+        'membership_status'   => $row['is_member'] ?? '',
+        'membership_category' => $row['membership_category'] ?? '',
+        'membership_number'   => $row['membership_number'] ?? '',
+        'nsa_fellow'          => $row['is_nsa_fellow'] ?? '',
+        'nsa_fellow_id'       => $row['nsa_fellow_id'] ?? '',
+        'cv'                  => $row['cv'] ?? '',
+        'signature'           => $row['signature'] ?? '',
+    );
+}
+
 function cison_fellowship_get_full_name($row)
 {
     return implode(' ', array_filter(array(
@@ -717,6 +900,17 @@ function cison_fellowship_build_submission_summary($row)
         $html .= '</table>';
     }
 
+    if (!empty($row['cv'])) {
+        $html .= '<h3 style="margin:22px 0 10px;color:#0f766e;font-family:Arial,sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:0.04em;">' . esc_html__('Curriculum Vitae', 'cison') . '</h3>';
+        $html .= '<table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">';
+        $html .= '<tr>';
+        $html .= '<td style="padding:8px 10px;border:1px solid #e2e8f0;color:#0f172a;vertical-align:top;">';
+        $html .= '<a href="' . esc_url($row['cv']) . '" style="color:#0f766e;font-weight:600;text-decoration:none;">' . esc_html(basename(parse_url($row['cv'], PHP_URL_PATH))) . '</a>';
+        $html .= '</td>';
+        $html .= '</tr>';
+        $html .= '</table>';
+    }
+
     return $html;
 }
 
@@ -816,6 +1010,18 @@ function cison_fellowship_get_certificate_attachments($row)
     return $attachments;
 }
 
+function cison_fellowship_get_cv_attachment($row)
+{
+    $url = $row['cv'] ?? '';
+    $path = cison_fellowship_url_to_path($url);
+
+    if ($path && is_file($path)) {
+        return $path;
+    }
+
+    return null;
+}
+
 function cison_fellowship_render_status_badge($status)
 {
     $normalized = strtolower(trim((string) $status));
@@ -854,6 +1060,11 @@ function cison_fellowship_handle_applicant_submission()
         $data['certificates'] = array_map('esc_url_raw', $certificates);
     }
 
+    $cv_url = cison_fellowship_handle_cv_upload();
+    if ($cv_url) {
+        $data['cv'] = $cv_url;
+    }
+
     if (!class_exists('WooCommerce') || !WC()) {
         return;
     }
@@ -880,6 +1091,119 @@ function cison_fellowship_handle_applicant_submission()
     exit;
 }
 add_action('template_redirect', 'cison_fellowship_handle_applicant_submission');
+
+// ============================================================
+// APPLICANT SELF-SERVICE EDIT
+// ============================================================
+
+/**
+ * Applicants use a signed link (?edit=1&ref=...&key=...) to update their own
+ * submission in place. No new order is created: fee-bearing fields and any
+ * sponsor endorsements are left untouched.
+ */
+function cison_fellowship_handle_applicant_edit()
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['cison_fellowship_edit_submit'])) {
+        return;
+    }
+
+    if (!isset($_POST['cison_fellowship_edit_nonce']) || !wp_verify_nonce($_POST['cison_fellowship_edit_nonce'], 'cison_fellowship_edit_action')) {
+        return;
+    }
+
+    $reference_number = sanitize_text_field(wp_unslash($_POST['ref'] ?? ''));
+    $provided_key     = sanitize_text_field(wp_unslash($_POST['key'] ?? ''));
+    if (empty($reference_number) || empty($provided_key)) {
+        return;
+    }
+
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM $table_name WHERE reference_number = %s LIMIT 1", $reference_number),
+        ARRAY_A
+    );
+    if (!$row || empty($row['sponsor_token'])) {
+        return;
+    }
+
+    $expected_key = cison_fellowship_edit_key($row['sponsor_token']);
+    if (!hash_equals($expected_key, $provided_key)) {
+        return;
+    }
+
+    $data = cison_fellowship_sanitize($_POST);
+    $data = array_merge($data, cison_fellowship_locked_edit_values($row));
+
+    $errors = cison_fellowship_validate($data, (int) $row['id']);
+    if (!empty($errors)) {
+        // Return silently: the application shortcode re-renders the edit form
+        // with the same POST data and shows the validation errors.
+        return;
+    }
+
+    $data['certificates'] = array();
+    if (!empty($row['certificates'])) {
+        $existing = json_decode($row['certificates'], true);
+        if (is_array($existing)) {
+            $data['certificates'] = $existing;
+        }
+    }
+    $new_certificates = cison_fellowship_handle_certificates_upload();
+    if (!empty($new_certificates)) {
+        $data['certificates'] = array_values(array_merge($data['certificates'], array_map('esc_url_raw', $new_certificates)));
+    }
+
+    $signature_url = cison_fellowship_handle_applicant_signature_upload();
+    if ($signature_url) {
+        $data['signature'] = $signature_url;
+    }
+
+    $cv_url = cison_fellowship_handle_cv_upload();
+    if ($cv_url) {
+        $data['cv'] = $cv_url;
+    }
+
+    $update_data = array(
+        'is_member' => $data['membership_status'],
+        'is_nsa_fellow' => $data['nsa_fellow'],
+        'nsa_fellow_id' => $data['nsa_fellow_id'],
+        'membership_category' => $data['membership_category'],
+        'membership_number' => $data['membership_number'],
+        'title' => $data['title'],
+        'first_name' => $data['first_name'],
+        'middle_name' => $data['middle_name'],
+        'last_name' => $data['last_name'],
+        'email' => strtolower($data['email']),
+        'phone' => $data['phone'],
+        'gender' => $data['gender'],
+        'date_of_birth' => !empty($data['date_of_birth']) ? $data['date_of_birth'] : null,
+        'nationality' => $data['nationality'],
+        'occupation' => $data['occupation'],
+        'designation' => $data['designation'],
+        'employer' => $data['employer'],
+        'street' => $data['street'],
+        'city' => $data['city'],
+        'state' => $data['state'],
+        'country' => $data['country'],
+        'years_of_practice' => $data['years_of_practice'],
+        'area_of_practice' => $data['area_of_practice'],
+        'academic_qualifications' => cison_fellowship_qualifications_to_string($data['academic_qualifications']),
+        'professional_experience' => $data['professional_experience'],
+        'publications' => $data['publications'],
+        'certificates' => !empty($data['certificates']) ? wp_json_encode(array_values($data['certificates'])) : '',
+        'signature' => $data['signature'] ?? '',
+        'cv' => $data['cv'] ?? '',
+        'updated_at' => current_time('mysql'),
+    );
+
+    $wpdb->update($table_name, $update_data, array('id' => (int) $row['id']));
+
+    wp_safe_redirect(add_query_arg('edited', '1', cison_fellowship_edit_link($row)));
+    exit;
+}
+add_action('template_redirect', 'cison_fellowship_handle_applicant_edit');
 
 // ============================================================
 // WOOCOMMERCE: PERSIST APPLICATION DATA ON ORDER
@@ -1075,7 +1399,8 @@ function cison_fellowship_handle_send_submission_email()
     );
     $attachments = array_merge(
         cison_fellowship_get_signature_attachments($row),
-        cison_fellowship_get_certificate_attachments($row)
+        cison_fellowship_get_certificate_attachments($row),
+        array_filter(array(cison_fellowship_get_cv_attachment($row)))
     );
 
     $mail_error = '';
@@ -1110,6 +1435,160 @@ function cison_fellowship_handle_send_submission_email()
     exit;
 }
 add_action('admin_post_cison_fellowship_email_submission', 'cison_fellowship_handle_send_submission_email');
+
+function cison_fellowship_get_field_request_map()
+{
+    return array(
+        'first_name' => 'First Name',
+        'middle_name' => 'Middle Name',
+        'last_name' => 'Last Name',
+        'email' => 'Email Address',
+        'phone' => 'Phone Number',
+        'title' => 'Title',
+        'gender' => 'Gender',
+        'date_of_birth' => 'Date of Birth',
+        'nationality' => 'Nationality',
+        'membership_number' => 'CISON Member Number',
+        'membership_category' => 'Membership Category',
+        'street' => 'Street Address',
+        'city' => 'City',
+        'state' => 'State',
+        'country' => 'Country',
+        'occupation' => 'Current Occupation',
+        'designation' => 'Designation',
+        'employer' => 'Employer / Institution',
+        'years_of_practice' => 'Years of Practice',
+        'area_of_practice' => 'Area of Statistics',
+        'academic_qualifications' => 'Academic Qualifications',
+        'professional_experience' => 'Professional Experience',
+        'publications' => 'Publications, Research & Contribution',
+        'certificates' => 'Certificates',
+        'cv' => 'Curriculum Vitae (CV)',
+        'signature' => 'Signature',
+        'nsa_fellow_id' => 'NSA Fellow ID',
+    );
+}
+
+function cison_fellowship_handle_request_fields_email()
+{
+    if (!is_admin() || !current_user_can('manage_options')) {
+        return;
+    }
+
+    if (!isset($_POST['cison_fellowship_fields_submit'])) {
+        return;
+    }
+
+    if (
+        !isset($_POST['cison_fellowship_fields_nonce'])
+        || !wp_verify_nonce($_POST['cison_fellowship_fields_nonce'], 'cison_fellowship_fields_action')
+    ) {
+        return;
+    }
+
+    $ref = isset($_POST['fs_ref']) ? sanitize_text_field(wp_unslash($_POST['fs_ref'])) : '';
+    if (empty($ref)) {
+        return;
+    }
+
+    global $wpdb;
+    $table_name = cison_fellowship_get_table_name();
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM $table_name WHERE reference_number = %s LIMIT 1", $ref),
+        ARRAY_A
+    );
+
+    if (!$row) {
+        wp_safe_redirect(add_query_arg(array('fs_field_email_error' => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL));
+        exit;
+    }
+
+    $applicant_email = $row['email'] ?? '';
+    if (empty($applicant_email) || !is_email($applicant_email)) {
+        wp_safe_redirect(add_query_arg(array('fs_field_email_error' => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL));
+        exit;
+    }
+
+    $map = cison_fellowship_get_field_request_map();
+
+    // Only accept keys that exist in the map, so the email can never list
+    // arbitrary attacker-controlled field names.
+    $selected = array();
+    if (!empty($_POST['cison_fellowship_fields']) && is_array($_POST['cison_fellowship_fields'])) {
+        foreach ((array) $_POST['cison_fellowship_fields'] as $key) {
+            $clean_key = sanitize_key($key);
+            if (isset($map[$clean_key])) {
+                $selected[$clean_key] = $map[$clean_key];
+            }
+        }
+    }
+
+    if (empty($selected)) {
+        wp_safe_redirect(add_query_arg(array('fs_field_email_error' => '1', 'fs_ref' => rawurlencode($ref)), CISON_FELLOWSHIP_DETAIL_URL));
+        exit;
+    }
+
+    $note = isset($_POST['cison_fellowship_fields_note']) ? sanitize_textarea_field(wp_unslash($_POST['cison_fellowship_fields_note'])) : '';
+
+    $items_html = '';
+    foreach ($selected as $label) {
+        $items_html .= '<li>' . esc_html($label) . '</li>';
+    }
+
+    $subject = sprintf('Action Required: Complete Your CISON Fellowship Application (%s)', $row['reference_number']);
+
+    $edit_link = cison_fellowship_edit_link($row);
+
+    $message_html = sprintf(
+        '<p>Dear %s,</p>' .
+        '<p>Thank you for applying to become a <strong>CISON Fellow</strong>. While reviewing your application (reference <strong>%s</strong>), we noticed that the following field(s) need your attention:</p>' .
+        '<ul>%s</ul>' .
+        '<p>Please complete or correct the field(s) listed above so we can continue processing your application.</p>' .
+        '%s' .
+        '<p>You can update these details yourself using the secure edit link below:</p>' .
+        '<p style="margin:20px 0;"><a href="%s" style="display:inline-block;padding:12px 24px;color:#ffffff;background-color:#0f766e;border-radius:6px;text-decoration:none;">Edit My Application</a></p>' .
+        '<p style="font-size:13px;color:#6b7280;">If the button does not work, copy and paste this link into your browser:<br>%s</p>' .
+        '<p>If you have any questions, please contact us for assistance.</p>' .
+        '<p>Best regards,<br>CISON Fellowship Committee</p>',
+        esc_html(cison_fellowship_get_full_name($row) ?: 'Applicant'),
+        esc_html($row['reference_number']),
+        $items_html,
+        $note !== '' ? '<p><strong>Additional note from the committee:</strong><br>' . nl2br(esc_html($note)) . '</p>' : '',
+        esc_url($edit_link),
+        esc_html($edit_link)
+    );
+
+    $message = cison_fellowship_email_document($message_html);
+    $headers = array('Content-Type: text/html; charset=UTF-8');
+
+    $mail_error = '';
+    add_action('wp_mail_failed', function ($wp_error) use (&$mail_error) {
+        if (is_wp_error($wp_error)) {
+            $mail_error = $wp_error->get_error_message();
+            $data = $wp_error->get_error_data();
+            if (is_array($data) && !empty($data['phpmailer_exception']) && method_exists($data['phpmailer_exception'], 'getMessage')) {
+                $mail_error = $data['phpmailer_exception']->getMessage();
+            }
+        }
+    });
+
+    $sent = wp_mail($applicant_email, $subject, $message, $headers);
+
+    $redirect_args = array('fs_ref' => rawurlencode($ref));
+    if ($sent) {
+        $redirect_args['fs_field_email_sent'] = '1';
+    } else {
+        $redirect_args['fs_field_email_error'] = '1';
+        if ($mail_error !== '') {
+            $redirect_args['fs_email_msg'] = $mail_error;
+        }
+    }
+
+    wp_safe_redirect(add_query_arg($redirect_args, CISON_FELLOWSHIP_DETAIL_URL));
+    exit;
+}
+add_action('admin_post_cison_fellowship_request_fields', 'cison_fellowship_handle_request_fields_email');
 
 // ============================================================
 // WOOCOMMERCE: SAVE ON PAYMENT COMPLETE
@@ -1211,6 +1690,7 @@ function cison_fellowship_save_on_payment_complete($order_id)
         'professional_experience' => $data['professional_experience'],
 'publications'          => $data['publications'],
         'certificates'          => !empty($data['certificates']) ? wp_json_encode(array_values($data['certificates'])) : '',
+        'cv'                    => $data['cv'] ?? '',
         'signature'             => $data['signature'] ?? '',
         'num_sponsors' => 2,
         'product_ids' => $product_ids,
@@ -1249,6 +1729,8 @@ function cison_fellowship_send_applicant_email($data, $token)
     $first_name = $data['first_name'] ?: 'Applicant';
     $is_nsa_fellow = strtolower($data['is_nsa_fellow'] ?? '') === 'yes';
 
+    $edit_link = cison_fellowship_edit_link($data);
+
     $headers = array('Content-Type: text/html; charset=UTF-8');
 
     // NSA fellows do not require sponsorship; send a simple confirmation.
@@ -1265,9 +1747,14 @@ function cison_fellowship_send_applicant_email($data, $token)
             '<p>As a current <strong>NSA Fellow</strong>, sponsorship endorsement is not required for your application.</p>' .
             '<p>Your application has been submitted and will be reviewed by the fellowship committee. ' .
             'We will contact you once a decision has been made.</p>' .
+            '<p>If you need to correct or update any of your details, you can edit your application at any time:</p>' .
+            '<p style="margin:20px 0;"><a href="%s" style="display:inline-block;padding:12px 24px;color:#ffffff;background-color:#0f766e;border-radius:6px;text-decoration:none;">Edit My Application</a></p>' .
+            '<p style="font-size:13px;color:#6b7280;">If the button does not work, copy and paste this link into your browser:<br>%s</p>' .
             '<p>If you have any questions, please contact us for assistance.</p>' .
             '<p>Best regards,<br>CISON Fellowship Committee</p>',
-            esc_html($first_name)
+            esc_html($first_name),
+            esc_url($edit_link),
+            esc_html($edit_link)
         );
 
         return wp_mail($email, $subject, $message_html, $headers);
@@ -1297,11 +1784,13 @@ function cison_fellowship_send_applicant_email($data, $token)
         '<p style="margin:20px 0;"><a href="%s" style="display:inline-block;padding:12px 24px;color:#ffffff;background-color:#0f766e;border-radius:6px;text-decoration:none;">Open Sponsor Endorsement Form</a></p>' .
         '<p style="font-size:13px;color:#6b7280;">If the button does not work, copy and paste this link into your browser:<br>%s</p>' .
         '<p style="font-size:13px;color:#6b7280;">Please share this link only with your two chosen sponsors.</p>' .
+        '<p style="font-size:13px;color:#6b7280;">If you need to correct or update any of your application details, you can <a href="%s" style="color:#0f766e;font-weight:600;text-decoration:none;">edit your application here</a>.</p>' .
         '<p>If you have any questions, please contact us for assistance.</p>' .
         '<p>Best regards,<br>CISON Fellowship Committee</p>',
         esc_html($first_name),
         esc_url($sponsor_link),
-        esc_html($sponsor_link)
+        esc_html($sponsor_link),
+        esc_url($edit_link)
     );
 
     $headers = array('Content-Type: text/html; charset=UTF-8');
@@ -1370,7 +1859,24 @@ function cison_fellowship_form_shortcode()
     $application = null;
     $view_status = 'new';
 
-    if (!empty($token)) {
+    $is_edit = isset($_GET['edit']) && sanitize_text_field(wp_unslash($_GET['edit'])) === '1';
+    $edit_application = null;
+    $edit_verified = false;
+    $edit_ref = '';
+    $edit_key = '';
+
+    if ($is_edit) {
+        // Applicant self-service edit via the signed link.
+        $edit_ref = sanitize_text_field(wp_unslash($_GET['ref'] ?? ''));
+        $edit_key = sanitize_text_field(wp_unslash($_GET['key'] ?? ''));
+        if (!empty($edit_ref) && !empty($edit_key)) {
+            $edit_application = cison_fellowship_get_application_by_reference($edit_ref);
+            if ($edit_application && !empty($edit_application['sponsor_token'])) {
+                $edit_verified = hash_equals(cison_fellowship_edit_key($edit_application['sponsor_token']), $edit_key);
+            }
+        }
+        $view_status = $edit_verified ? 'edit' : 'invalid_edit';
+    } elseif (!empty($token)) {
         $application = cison_fellowship_get_application_by_token($token);
         if ($application) {
             $view_status = cison_fellowship_get_token_status($application);
@@ -1383,7 +1889,29 @@ function cison_fellowship_form_shortcode()
     $feedback_message = '';
     $feedback_type = '';
 
-    if ($view_status === 'new') {
+    if ($view_status === 'edit') {
+        $values = cison_fellowship_map_db_to_form($edit_application);
+
+        if (isset($_GET['edited'])) {
+            $feedback_message = 'Your application details have been updated successfully.';
+            $feedback_type = 'success';
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cison_fellowship_edit_submit'])) {
+            if (!isset($_POST['cison_fellowship_edit_nonce']) || !wp_verify_nonce($_POST['cison_fellowship_edit_nonce'], 'cison_fellowship_edit_action')) {
+                $feedback_message = 'Security check failed. Please try again.';
+                $feedback_type = 'error';
+            } else {
+                $values = array_merge($values, cison_fellowship_sanitize($_POST));
+                $values = array_merge($values, cison_fellowship_locked_edit_values($edit_application));
+                $errors = cison_fellowship_validate($values, (int) $edit_application['id']);
+                if (!empty($errors)) {
+                    $feedback_message = implode(' ', $errors);
+                    $feedback_type = 'error';
+                }
+            }
+        }
+    } elseif ($view_status === 'new') {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cison_fellowship_submit'])) {
             $values = array_merge($values, cison_fellowship_sanitize($_POST));
 
@@ -1423,8 +1951,14 @@ function cison_fellowship_form_shortcode()
 
     ob_start();
     ?>
-    <div class="cison-fs" data-has-token="<?php echo $has_valid_token ? '1' : '0'; ?>">
-        <?php if ($view_status === 'complete'): ?>
+    <div class="cison-fs" data-has-token="<?php echo $has_valid_token ? '1' : '0'; ?>"<?php echo $view_status === 'edit' ? ' data-edit="1"' : ''; ?>>
+        <?php if ($view_status === 'invalid_edit'): ?>
+            <div class="cison-fs__header">
+                <h3>Invalid or Expired Edit Link</h3>
+                <p>The edit link you used is invalid or has expired. If you believe this is a mistake, please contact
+                    the CISON Fellowship Committee for assistance.</p>
+            </div>
+        <?php elseif ($view_status === 'complete'): ?>
             <div class="cison-fs__header">
                 <h3>Fellowship Application Complete</h3>
                 <p>Both sponsors have submitted their endorsements. Your application will be reviewed by the fellowship
@@ -1498,7 +2032,14 @@ function cison_fellowship_form_shortcode()
         <?php else: ?>
             <div class="cison-fs__header">
                 <!-- <h3>CISON Fellowship Application</h3> -->
-                <p>Complete the form below to apply for CISON Fellowship.</p>
+                <?php if ($view_status === 'edit'): ?>
+                    <p>Review your application details below. You can update the information shown and save your
+                        changes.</p>
+                    <p class="cison-fs__help">Fee-related settings (membership status, membership category and NSA
+                        fellow status) were locked at submission and cannot be changed here.</p>
+                <?php else: ?>
+                    <p>Complete the form below to apply for CISON Fellowship.</p>
+                <?php endif; ?>
             </div>
 
             <?php if ($feedback_message): ?>
@@ -1508,52 +2049,102 @@ function cison_fellowship_form_shortcode()
             <?php endif; ?>
 
             <form method="post" class="cison-fs__form" enctype="multipart/form-data" novalidate>
-                <?php wp_nonce_field('cison_fellowship_action', 'cison_fellowship_nonce'); ?>
-                <input type="hidden" name="cison_fellowship_submit" value="1">
+                <?php if ($view_status === 'edit'): ?>
+                    <?php wp_nonce_field('cison_fellowship_edit_action', 'cison_fellowship_edit_nonce'); ?>
+                    <input type="hidden" name="cison_fellowship_edit_submit" value="1">
+                    <input type="hidden" name="ref" value="<?php echo esc_attr($edit_ref); ?>">
+                    <input type="hidden" name="key" value="<?php echo esc_attr($edit_key); ?>">
+                <?php else: ?>
+                    <?php wp_nonce_field('cison_fellowship_action', 'cison_fellowship_nonce'); ?>
+                    <input type="hidden" name="cison_fellowship_submit" value="1">
+                <?php endif; ?>
 
                 <div class="cison-fs__section cison-fs__section--membership">
                     <h4>Present Membership Status in CISON</h4>
-                    <p class="cison-fs__help">If you are a non-member, you may qualify for honorary fellowship.</p>
-                    <div class="cison-fs__grid cison-fs__grid--two">
-                        <div>
-                            <label for="cison_fs_member_status">Are you a CISON Member? <span>*</span></label>
-                            <select id="cison_fs_member_status" name="membership_status" required>
-                                <option value="">Select</option>
-                                <option value="member" <?php selected($values['membership_status'], 'member'); ?>>Member
-                                </option>
-                                <option value="non-member" <?php selected($values['membership_status'], 'non-member'); ?>>
-                                    Non-Member</option>
-                            </select>
-                        </div>
-                    </div>
 
-                    <div class="cison-fs__nsa-fellow-wrap js-nsa-fellow-wrap"
-                        style="<?php echo $is_member ? '' : 'display:none;'; ?>">
+                    <?php if ($view_status === 'edit'): ?>
+                        <p class="cison-fs__help">These details are locked at submission. Contact us if they need to
+                            change.</p>
                         <div class="cison-fs__grid cison-fs__grid--two">
                             <div>
-                                <label for="cison_fs_nsa_fellow">Are you an NSA Fellow? <span>*</span></label>
-                                <select id="cison_fs_nsa_fellow" name="nsa_fellow">
-                                    <option value="">Select</option>
-                                    <option value="yes" <?php selected($values['nsa_fellow'], 'yes'); ?>>Yes</option>
-                                    <option value="no" <?php selected($values['nsa_fellow'], 'no'); ?>>No</option>
+                                <label for="cison_fs_member_status">Are you a CISON Member?</label>
+                                <select id="cison_fs_member_status" name="membership_status" disabled>
+                                    <option value="member" <?php selected($values['membership_status'], 'member'); ?>>
+                                        Member</option>
+                                    <option value="non-member" <?php selected($values['membership_status'], 'non-member'); ?>>
+                                        Non-Member</option>
                                 </select>
                             </div>
                         </div>
 
-                        <div class="cison-fs__nsa-id-wrap js-nsa-id-wrap"
-                            style="<?php echo $is_nsa_fellow ? '' : 'display:none;'; ?>">
+                        <div class="cison-fs__nsa-fellow-wrap js-nsa-fellow-wrap"
+                            style="<?php echo $is_member ? '' : 'display:none;'; ?>">
                             <div class="cison-fs__grid cison-fs__grid--two">
                                 <div>
-                                    <label for="cison_fs_nsa_fellow_id">NSA Fellow ID <span>*</span></label>
-                                    <input id="cison_fs_nsa_fellow_id" type="text" name="nsa_fellow_id"
-                                        value="<?php echo esc_attr($values['nsa_fellow_id']); ?>"
-                                        placeholder="e.g. NSA/FNSA/2021001" <?php echo $is_nsa_fellow ? 'required' : ''; ?>>
-                                    <span class="cison-fs__help">Enter the NSA Fellow ID shown on your fellowship
-                                        certificate.</span>
+                                    <label for="cison_fs_nsa_fellow">Are you an NSA Fellow?</label>
+                                    <select id="cison_fs_nsa_fellow" name="nsa_fellow" disabled>
+                                        <option value="yes" <?php selected($values['nsa_fellow'], 'yes'); ?>>Yes</option>
+                                        <option value="no" <?php selected($values['nsa_fellow'], 'no'); ?>>No</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="cison-fs__nsa-id-wrap js-nsa-id-wrap"
+                                style="<?php echo $is_nsa_fellow ? '' : 'display:none;'; ?>">
+                                <div class="cison-fs__grid cison-fs__grid--two">
+                                    <div>
+                                        <label for="cison_fs_nsa_fellow_id">NSA Fellow ID</label>
+                                        <input id="cison_fs_nsa_fellow_id" type="text" name="nsa_fellow_id"
+                                            value="<?php echo esc_attr($values['nsa_fellow_id']); ?>" disabled>
+                                        <span class="cison-fs__help">Enter the NSA Fellow ID shown on your fellowship
+                                            certificate.</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    <?php else: ?>
+                        <p class="cison-fs__help">If you are a non-member, you may qualify for honorary fellowship.</p>
+                        <div class="cison-fs__grid cison-fs__grid--two">
+                            <div>
+                                <label for="cison_fs_member_status">Are you a CISON Member? <span>*</span></label>
+                                <select id="cison_fs_member_status" name="membership_status" required>
+                                    <option value="">Select</option>
+                                    <option value="member" <?php selected($values['membership_status'], 'member'); ?>>
+                                        Member</option>
+                                    <option value="non-member" <?php selected($values['membership_status'], 'non-member'); ?>>
+                                        Non-Member</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="cison-fs__nsa-fellow-wrap js-nsa-fellow-wrap"
+                            style="<?php echo $is_member ? '' : 'display:none;'; ?>">
+                            <div class="cison-fs__grid cison-fs__grid--two">
+                                <div>
+                                    <label for="cison_fs_nsa_fellow">Are you an NSA Fellow? <span>*</span></label>
+                                    <select id="cison_fs_nsa_fellow" name="nsa_fellow">
+                                        <option value="">Select</option>
+                                        <option value="yes" <?php selected($values['nsa_fellow'], 'yes'); ?>>Yes</option>
+                                        <option value="no" <?php selected($values['nsa_fellow'], 'no'); ?>>No</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="cison-fs__nsa-id-wrap js-nsa-id-wrap"
+                                style="<?php echo $is_nsa_fellow ? '' : 'display:none;'; ?>">
+                                <div class="cison-fs__grid cison-fs__grid--two">
+                                    <div>
+                                        <label for="cison_fs_nsa_fellow_id">NSA Fellow ID <span>*</span></label>
+                                        <input id="cison_fs_nsa_fellow_id" type="text" name="nsa_fellow_id"
+                                            value="<?php echo esc_attr($values['nsa_fellow_id']); ?>"
+                                            placeholder="e.g. NSA/FNSA/2021001" <?php echo $is_nsa_fellow ? 'required' : ''; ?>>
+                                        <span class="cison-fs__help">Enter the NSA Fellow ID shown on your fellowship
+                                            certificate.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="cison-fs__section">
@@ -1629,7 +2220,7 @@ function cison_fellowship_form_shortcode()
                         <div>
                             <label for="cison_fs_member_number">CISON Member Number <span>*</span></label>
                             <input id="cison_fs_member_number" type="text" name="membership_number"
-                                value="<?php echo esc_attr($values['membership_number']); ?>" required>
+                                value="<?php echo esc_attr($values['membership_number']); ?>" required<?php echo $view_status === 'edit' ? ' disabled' : ''; ?>>
                         </div>
                     </div>
                 </div>
@@ -1724,7 +2315,7 @@ function cison_fellowship_form_shortcode()
                     <div class="cison-fs__grid">
                         <div>
                             <label for="cison_fs_member_category">Membership Category</label>
-                            <select id="cison_fs_member_category" name="membership_category">
+                            <select id="cison_fs_member_category" name="membership_category"<?php echo $view_status === 'edit' ? ' disabled' : ''; ?>>
                                 <option value="">Select</option>
                                 <?php foreach ($categories as $cat): ?>
                                     <option value="<?php echo esc_attr($cat); ?>" <?php selected($values['membership_category'], $cat); ?>><?php echo esc_html($cat); ?></option>
@@ -1778,11 +2369,47 @@ function cison_fellowship_form_shortcode()
                     </div>
                 </div>
 
+                <div class="cison-fs__section js-form-section" data-section="cv">
+                    <h4>Curriculum Vitae</h4>
+                    <div class="cison-fs__grid">
+                        <div>
+                            <?php if ($view_status === 'edit' && !empty($values['cv'])): ?>
+                                <div class="cison-fs__help">Current CV: <a href="<?php echo esc_url($values['cv']); ?>"
+                                        target="_blank">View uploaded CV</a> — upload a new file below only to replace
+                                    it.</div>
+                                <label for="cison_fs_cv">Replace CV</label>
+                            <?php else: ?>
+                                <label for="cison_fs_cv">Upload CV <span>*</span></label>
+                            <?php endif; ?>
+                            <input id="cison_fs_cv" type="file" name="cv" accept=".pdf,.doc,.docx,.txt">
+                            <span class="cison-fs__help">Accepted formats: PDF, DOC, DOCX, TXT. Max size: 5MB.</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="cison-fs__section js-form-section" data-section="certificates">
                     <h4>Certificates</h4>
                     <div class="cison-fs__grid">
                         <div>
-                            <label>Upload Certificates</label>
+                            <?php
+                            $existing_cert_urls = array();
+                            if ($view_status === 'edit' && !empty($values['certificates'])) {
+                                $decoded = json_decode($values['certificates'], true);
+                                if (is_array($decoded)) {
+                                    $existing_cert_urls = $decoded;
+                                }
+                            }
+                            ?>
+                            <?php if (!empty($existing_cert_urls)): ?>
+                                <div class="cison-fs__help">Current certificates:
+                                    <?php foreach ($existing_cert_urls as $cert_url): ?>
+                                        <a href="<?php echo esc_url($cert_url); ?>" target="_blank">
+                                            <?php echo esc_html(basename(parse_url($cert_url, PHP_URL_PATH))); ?></a>
+                                        &nbsp;
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                            <label>Upload <?php echo !empty($existing_cert_urls) ? 'Additional ' : ''; ?>Certificates</label>
                             <span class="cison-fs__help">Add a certificate below and use "+ Add Certificate" to upload
                                 more. Accepted formats: JPG, PNG, GIF, PDF. Max size: 2MB each.</span>
                             <div id="cison-fs-certs" class="cison-fs__cert-list">
@@ -1832,7 +2459,14 @@ function cison_fellowship_form_shortcode()
                     <h4>Signature</h4>
                     <div class="cison-fs__grid">
                         <div>
-                            <label for="cison_fs_signature">Upload Signature (Image)</label>
+                            <?php if ($view_status === 'edit' && !empty($values['signature'])): ?>
+                                <div class="cison-fs__help">Current signature: <a href="<?php echo esc_url($values['signature']); ?>"
+                                        target="_blank">View signature</a> — upload a new image below only to replace
+                                    it.</div>
+                                <label for="cison_fs_signature">Replace Signature (Image)</label>
+                            <?php else: ?>
+                                <label for="cison_fs_signature">Upload Signature (Image)</label>
+                            <?php endif; ?>
                             <input id="cison_fs_signature" type="file" name="signature" accept="image/*">
                             <span class="cison-fs__help">Accepted formats: JPG, PNG, GIF. Max size: 2MB.</span>
                         </div>
@@ -1840,7 +2474,7 @@ function cison_fellowship_form_shortcode()
                 </div>
 
                 <button type="submit" class="cison-fs__submit">
-                    Submit Application &amp; Proceed to Payment
+                    <?php echo $view_status === 'edit' ? 'Save Changes' : 'Submit Application &amp; Proceed to Payment'; ?>
                 </button>
             </form>
         <?php endif; ?>
@@ -1848,6 +2482,16 @@ function cison_fellowship_form_shortcode()
 
     <?php echo cison_fellowship_render_styles(); ?>
     <?php echo cison_fellowship_render_scripts($is_member, $is_nsa_fellow); ?>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            var container = document.querySelector(".cison-fs[data-edit='1']");
+            if (!container) return;
+            ["membership_status", "nsa_fellow", "nsa_fellow_id", "membership_number", "membership_category"].forEach(function (name) {
+                var el = container.querySelector("[name='" + name + "']");
+                if (el) el.setAttribute("disabled", "disabled");
+            });
+        });
+    </script>
     <?php
     return ob_get_clean();
 }
@@ -2125,6 +2769,10 @@ function cison_fellowship_submission_detail_shortcode()
     $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
     $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
     $quals = !empty($row['academic_qualifications']) ? explode("\n", $row['academic_qualifications']) : array();
+    $certificates = !empty($row['certificates']) ? json_decode($row['certificates'], true) : array();
+    $certificates = is_array($certificates) ? $certificates : array();
+    $cv_url = $row['cv'] ?? '';
+    $show_member_content = ($row['is_member'] === 'member') && strtolower($row['is_nsa_fellow'] ?? '') !== 'yes';
 
     ob_start();
     ?>
@@ -2138,6 +2786,18 @@ function cison_fellowship_submission_detail_shortcode()
         <?php elseif (isset($_GET['fs_email_error'])): ?>
             <div class="cison-fs-detail__message cison-fs-detail__message--error">
                 There was an error sending the email. Please check the recipient addresses and try again.
+                <?php if (!empty($_GET['fs_email_msg'])): ?>
+                    <br><strong>Reason:</strong> <?php echo esc_html(wp_unslash($_GET['fs_email_msg'])); ?>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($_GET['fs_field_email_sent'])): ?>
+            <div class="cison-fs-detail__message cison-fs-detail__message--success">Request email sent to the applicant.</div>
+        <?php elseif (isset($_GET['fs_field_email_error'])): ?>
+            <div class="cison-fs-detail__message cison-fs-detail__message--error">
+                There was an error sending the request email to the applicant. Please check the applicant's email address
+                and selected fields and try again.
                 <?php if (!empty($_GET['fs_email_msg'])): ?>
                     <br><strong>Reason:</strong> <?php echo esc_html(wp_unslash($_GET['fs_email_msg'])); ?>
                 <?php endif; ?>
@@ -2172,19 +2832,25 @@ function cison_fellowship_submission_detail_shortcode()
                         <span class="cison-fs-detail__label">Phone</span>
                         <span class="cison-fs-detail__value"><?php echo esc_html($row['phone'] ?: 'N/A'); ?></span>
                     </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Gender</span>
-                        <span class="cison-fs-detail__value"><?php echo esc_html($row['gender'] ?: 'N/A'); ?></span>
-                    </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Date of Birth</span>
-                        <span
-                            class="cison-fs-detail__value"><?php echo esc_html($row['date_of_birth'] ? date_i18n('M j, Y', strtotime($row['date_of_birth'])) : 'N/A'); ?></span>
-                    </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Nationality</span>
-                        <span class="cison-fs-detail__value"><?php echo esc_html($row['nationality'] ?: 'N/A'); ?></span>
-                    </div>
+                    <?php if (!empty($row['gender'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Gender</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['gender']); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['date_of_birth'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Date of Birth</span>
+                            <span
+                                class="cison-fs-detail__value"><?php echo esc_html(date_i18n('M j, Y', strtotime($row['date_of_birth']))); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['nationality'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Nationality</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['nationality']); ?></span>
+                        </div>
+                    <?php endif; ?>
                     <?php if (!empty($row['signature'])): ?>
                         <div class="cison-fs-detail__field">
                             <span class="cison-fs-detail__label">Signature</span>
@@ -2198,18 +2864,24 @@ function cison_fellowship_submission_detail_shortcode()
             <div class="cison-fs-detail__card">
                 <h4>Residential Address</h4>
                 <div class="cison-fs-detail__fields">
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Street</span>
-                        <span class="cison-fs-detail__value"><?php echo esc_html($row['street'] ?: 'N/A'); ?></span>
-                    </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">City</span>
-                        <span class="cison-fs-detail__value"><?php echo esc_html($row['city'] ?: 'N/A'); ?></span>
-                    </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">State</span>
-                        <span class="cison-fs-detail__value"><?php echo esc_html($row['state'] ?: 'N/A'); ?></span>
-                    </div>
+                    <?php if (!empty($row['street'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Street</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['street']); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['city'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">City</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['city']); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['state'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">State</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['state']); ?></span>
+                        </div>
+                    <?php endif; ?>
                     <div class="cison-fs-detail__field">
                         <span class="cison-fs-detail__label">Country</span>
                         <span class="cison-fs-detail__value"><?php echo esc_html($row['country'] ?: 'N/A'); ?></span>
@@ -2224,24 +2896,32 @@ function cison_fellowship_submission_detail_shortcode()
                         <span class="cison-fs-detail__label">Occupation</span>
                         <span class="cison-fs-detail__value"><?php echo esc_html($row['occupation'] ?: 'N/A'); ?></span>
                     </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Designation</span>
-                        <span class="cison-fs-detail__value"><?php echo esc_html($row['designation'] ?: 'N/A'); ?></span>
-                    </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Employer / Institution</span>
-                        <span class="cison-fs-detail__value"><?php echo esc_html($row['employer'] ?: 'N/A'); ?></span>
-                    </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Years of Practice</span>
-                        <span
-                            class="cison-fs-detail__value"><?php echo esc_html($row['years_of_practice'] ?: 'N/A'); ?></span>
-                    </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Area of Statistics</span>
-                        <span
-                            class="cison-fs-detail__value"><?php echo esc_html($row['area_of_practice'] ?: 'N/A'); ?></span>
-                    </div>
+                    <?php if (!empty($row['designation'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Designation</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['designation']); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['employer'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Employer / Institution</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['employer']); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['years_of_practice'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Years of Practice</span>
+                            <span
+                                class="cison-fs-detail__value"><?php echo esc_html($row['years_of_practice']); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['area_of_practice'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Area of Statistics</span>
+                            <span
+                                class="cison-fs-detail__value"><?php echo esc_html($row['area_of_practice']); ?></span>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -2252,21 +2932,24 @@ function cison_fellowship_submission_detail_shortcode()
                         <span class="cison-fs-detail__label">Status</span>
                         <span class="cison-fs-detail__value"><?php echo esc_html($row['is_member'] ?: 'N/A'); ?></span>
                     </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">Category</span>
-                        <span
-                            class="cison-fs-detail__value"><?php echo esc_html($row['membership_category'] ?: 'N/A'); ?></span>
-                    </div>
+                    <?php if (!empty($row['membership_category'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">Category</span>
+                            <span
+                                class="cison-fs-detail__value"><?php echo esc_html($row['membership_category']); ?></span>
+                        </div>
+                    <?php endif; ?>
                     <div class="cison-fs-detail__field">
                         <span class="cison-fs-detail__label">Member Number</span>
                         <span
                             class="cison-fs-detail__value"><?php echo esc_html($row['membership_number'] ?: 'N/A'); ?></span>
                     </div>
-                    <div class="cison-fs-detail__field">
-                        <span class="cison-fs-detail__label">NSA Fellow</span>
-                        <span
-                            class="cison-fs-detail__value"><?php echo esc_html(($row['is_nsa_fellow'] ?? '') ?: 'N/A'); ?></span>
-                    </div>
+                    <?php if (!empty($row['is_nsa_fellow'])): ?>
+                        <div class="cison-fs-detail__field">
+                            <span class="cison-fs-detail__label">NSA Fellow</span>
+                            <span class="cison-fs-detail__value"><?php echo esc_html($row['is_nsa_fellow']); ?></span>
+                        </div>
+                    <?php endif; ?>
                     <?php if (!empty($row['nsa_fellow_id'])): ?>
                         <div class="cison-fs-detail__field">
                             <span class="cison-fs-detail__label">NSA Fellow ID</span>
@@ -2276,51 +2959,51 @@ function cison_fellowship_submission_detail_shortcode()
                 </div>
             </div>
 
-            <div class="cison-fs-detail__card">
-                <h4>Academic Qualifications</h4>
-                <?php if (!empty($quals)): ?>
-                    <table class="cison-fs-detail__quals-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($quals as $i => $line): ?>
+            <?php if ($show_member_content): ?>
+                <div class="cison-fs-detail__card">
+                    <h4>Academic Qualifications</h4>
+                    <?php if (!empty($quals)): ?>
+                        <table class="cison-fs-detail__quals-table">
+                            <thead>
                                 <tr>
-                                    <td><?php echo ($i + 1); ?></td>
-                                    <td><?php echo esc_html($line); ?></td>
+                                    <th>#</th>
+                                    <th>Details</th>
                                 </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else: ?>
-                    <p class="cison-fs-detail__empty">No qualifications listed.</p>
-                <?php endif; ?>
-            </div>
-
-            <div class="cison-fs-detail__card">
-                <h4>Professional Experience</h4>
-                <div class="cison-fs-detail__text-block">
-                    <?php echo esc_html($row['professional_experience'] ?: 'No details provided.'); ?>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($quals as $i => $line): ?>
+                                    <tr>
+                                        <td><?php echo ($i + 1); ?></td>
+                                        <td><?php echo esc_html($line); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
                 </div>
-            </div>
+            <?php endif; ?>
 
-            <div class="cison-fs-detail__card">
-                <h4>Publications, Research &amp; Contribution</h4>
-                <div class="cison-fs-detail__text-block">
-                    <?php echo esc_html($row['publications'] ?: 'No details provided.'); ?>
+            <?php if (!empty($row['professional_experience'])): ?>
+                <div class="cison-fs-detail__card">
+                    <h4>Professional Experience</h4>
+                    <div class="cison-fs-detail__text-block">
+                        <?php echo esc_html($row['professional_experience']); ?>
+                    </div>
                 </div>
-            </div>
+            <?php endif; ?>
 
-            <div class="cison-fs-detail__card">
-                <h4>Certificates</h4>
-                <?php
-                $certificates = !empty($row['certificates']) ? json_decode($row['certificates'], true) : array();
-                $certificates = is_array($certificates) ? $certificates : array();
-                ?>
-                <?php if (!empty($certificates)): ?>
+            <?php if ($show_member_content && !empty($row['publications'])): ?>
+                <div class="cison-fs-detail__card">
+                    <h4>Publications, Research &amp; Contribution</h4>
+                    <div class="cison-fs-detail__text-block">
+                        <?php echo esc_html($row['publications']); ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($certificates)): ?>
+                <div class="cison-fs-detail__card">
+                    <h4>Certificates</h4>
                     <div class="cison-fs-detail__text-block">
                         <ul class="cison-fs-detail__file-list">
                             <?php foreach ($certificates as $cert_url): ?>
@@ -2332,10 +3015,23 @@ function cison_fellowship_submission_detail_shortcode()
                             <?php endforeach; ?>
                         </ul>
                     </div>
-                <?php else: ?>
-                    <p class="cison-fs-detail__empty">No certificates uploaded.</p>
-                <?php endif; ?>
-            </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($cv_url)): ?>
+                <div class="cison-fs-detail__card">
+                    <h4>Curriculum Vitae</h4>
+                    <div class="cison-fs-detail__text-block">
+                        <ul class="cison-fs-detail__file-list">
+                            <li>
+                                <a href="<?php echo esc_url($cv_url); ?>" target="_blank" rel="noopener">
+                                    <?php echo esc_html(basename(parse_url($cv_url, PHP_URL_PATH))); ?>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <div class="cison-fs-detail__card">
                 <h4>Sponsor 1 — <?php echo cison_fellowship_render_status_badge($row['sponsor_1_status'] ?? 'pending'); ?>
@@ -2463,7 +3159,8 @@ function cison_fellowship_submission_detail_shortcode()
                 <h4>Email This Submission</h4>
                 <p class="cison-fs-detail__help">
                     Send this submission's details to one or more recipients. Separate multiple email addresses with commas
-                    (e.g. a@example.com, b@example.com). Applicant and sponsor signatures are attached automatically.
+                    (e.g. a@example.com, b@example.com). The applicant's CV, signature and certificates are attached
+                    automatically.
                 </p>
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
                     class="cison-fs-detail__email-form">
@@ -2506,6 +3203,46 @@ function cison_fellowship_submission_detail_shortcode()
                     </div>
 
                     <button type="submit" class="cison-fs-detail__send-btn">Send Email</button>
+                </form>
+            </div>
+
+            <div class="cison-fs-detail__card cison-fs-detail__card--meta cison-fs-detail__card--email">
+                <h4>Request Applicant to Complete Fields</h4>
+                <p class="cison-fs-detail__help">
+                    Select the fields the applicant needs to fill or correct. An email will be sent to
+                    <strong><?php echo esc_html(strtolower($row['email'])); ?></strong> listing the selected fields.
+                    Fields currently left empty are pre-selected.
+                </p>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
+                    class="cison-fs-detail__email-form">
+                    <input type="hidden" name="action" value="cison_fellowship_request_fields">
+                    <?php wp_nonce_field('cison_fellowship_fields_action', 'cison_fellowship_fields_nonce'); ?>
+                    <input type="hidden" name="cison_fellowship_fields_submit" value="1">
+                    <input type="hidden" name="fs_ref" value="<?php echo esc_attr($row['reference_number']); ?>">
+
+                    <div class="cison-fs-detail__field-request-grid">
+                        <?php foreach (cison_fellowship_get_field_request_map() as $key => $label):
+                            $is_empty = empty($row[$key]);
+                            ?>
+                            <label class="cison-fs-detail__field-request-item">
+                                <input type="checkbox" name="cison_fellowship_fields[]"
+                                    value="<?php echo esc_attr($key); ?>" <?php checked($is_empty); ?>>
+                                <span><?php echo esc_html($label); ?></span>
+                                <?php if ($is_empty): ?>
+                                    <em class="cison-fs-detail__field-request-empty">(empty)</em>
+                                <?php endif; ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="cison-fs-detail__email-field">
+                        <label for="cison_fs_fields_note">Additional note (optional)</label>
+                        <textarea id="cison_fs_fields_note" name="cison_fellowship_fields_note" rows="4"
+                            class="cison-fs-detail__input"
+                            placeholder="Optional message from the committee..."></textarea>
+                    </div>
+
+                    <button type="submit" class="cison-fs-detail__send-btn">Send Request to Applicant</button>
                 </form>
             </div>
         </div>
@@ -3357,6 +4094,39 @@ function cison_fellowship_submission_detail_styles()
             background: #115e59;
         }
 
+        .cison-fs-detail__field-request-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .cison-fs-detail__field-request-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #ffffff;
+            font-size: 13px;
+            color: #334155;
+            cursor: pointer;
+        }
+
+        .cison-fs-detail__field-request-item input {
+            accent-color: #0f766e;
+        }
+
+        .cison-fs-detail__field-request-empty {
+            margin-left: auto;
+            font-style: normal;
+            font-size: 11px;
+            color: #b45309;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
         @media (max-width: 768px) {
             .cison-fs-detail__grid {
                 grid-template-columns: 1fr;
@@ -3477,7 +4247,7 @@ function cison_fellowship_render_scripts($is_member = false, $is_nsa_fellow = fa
                         return;
                     }
                     // Certificates are available to every applicant regardless of membership status.
-                    if (sectionName === "certificates") {
+                    if (sectionName === "certificates" || sectionName === "cv") {
                         section.style.display = "";
                         return;
                     }

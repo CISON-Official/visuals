@@ -14,20 +14,47 @@ function nsa_registrations_table_shortcode($atts)
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
 
+    $current_user_id = get_current_user_id();
+    $is_privileged = $current_user_id && current_user_can('manage_options');
+    $current_member_id = '';
+
+    if (!$current_user_id) {
+        return '<p>Please log in to view your registrations.</p>';
+    }
+
+    if (!$is_privileged) {
+        $current_member_id = (string) $wpdb->get_var($wpdb->prepare(
+            "SELECT value FROM {$wpdb->prefix}bp_xprofile_data WHERE user_id = %d AND field_id = %d LIMIT 1",
+            $current_user_id,
+            894
+        ));
+        if ($current_member_id === '') {
+            return '<p>No member ID is linked to your account.</p>';
+        }
+    }
 
     if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
         return '<p style="color:red;">Error: Registration table not found.</p>';
     }
 
     $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
+    $allowed_filter_keys = array('registering_for', 'payment_status', 'title', 'first_name', 'last_name', 'email', 'member_id', 'organisation', 'country', 'gender', 'hear_about');
     $filter_key = sanitize_key($atts['filter']);
+    if (!in_array($filter_key, $allowed_filter_keys, true)) {
+        $filter_key = 'registering_for';
+    }
     $filter_value = isset($_GET['filter_' . $filter_key]) ? sanitize_text_field($_GET['filter_' . $filter_key]) : '';
     $paged = isset($_GET['nsa_paged']) ? max(1, intval($_GET['nsa_paged'])) : 1;
-    $per_page = intval($atts['per_page']);
+    $per_page = max(1, intval($atts['per_page']));
     $offset = ($paged - 1) * $per_page;
 
     $where_clauses = array("1=1");
     $query_params = array();
+
+    if ($current_member_id !== '') {
+        $where_clauses[] = "member_id = %s";
+        $query_params[] = $current_member_id;
+    }
 
     if ($search) {
         $search_term = '%' . $wpdb->esc_like($search) . '%';
@@ -115,16 +142,20 @@ function nsa_registrations_table_shortcode($atts)
                                             $status = strtolower($row[$col]);
                                             echo "<span class='u-nsa-status status-$status'>" . esc_html(ucfirst($status)) . "</span>";
                                         } else {
-                                            echo esc_html($row[$col] ?: '—');
+                                            echo esc_html(isset($row[$col]) && $row[$col] !== '' ? $row[$col] : '—');
                                         }
                                         ?>
                                     </td>
                                 <?php endforeach; ?>
                                 <td>
-                                    <a href="<?php echo admin_url('post.php?post=' . intval($row['order_id'] ?? 0) . '&action=edit'); ?>"
-                                        class="u-nsa-btn-view" target="_blank">
-                                        <i class="fas fa-external-link-alt"></i> Order
-                                    </a>
+                                    <?php if ($is_privileged && !empty($row['order_id'])): ?>
+                                        <a href="<?php echo admin_url('post.php?post=' . intval($row['order_id']) . '&action=edit'); ?>"
+                                            class="u-nsa-btn-view" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i> Order
+                                        </a>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; else: ?>

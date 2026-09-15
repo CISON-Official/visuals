@@ -15,7 +15,8 @@ if (!defined('ABSPATH')) {
 // 1. ENQUEUE SCRIPTS AND STYLES
 // ============================================================
 function nsa_enqueue_scripts() {
-    if (!is_page() && !has_shortcode(get_post()->post_content, 'nsa_registration_form')) {
+    $post = get_post();
+    if (!$post || !has_shortcode($post->post_content, 'nsa_registration_form')) {
         return;
     }
 
@@ -137,7 +138,6 @@ add_action('wp_ajax_nopriv_nsa_load_checkout', 'nsa_load_checkout_handler');
 // 5. SAVE BULK REGISTRATIONS (with global options and no address)
 // ============================================================
 function nsa_save_bulk_registrations() {
-    // Verify nonce
     if (!check_ajax_referer('nsa_registration_nonce', 'nonce', false)) {
         wp_send_json_error('Security verification failed');
     }
@@ -145,7 +145,6 @@ function nsa_save_bulk_registrations() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
 
-    // Validate organization details
     $org_name = sanitize_text_field($_POST['org_name'] ?? '');
     $org_email = sanitize_email($_POST['org_email'] ?? '');
     $org_phone = sanitize_text_field($_POST['org_phone'] ?? '');
@@ -158,13 +157,11 @@ function nsa_save_bulk_registrations() {
         wp_send_json_error('Valid organization email is required');
     }
 
-    // Get global registration options
     $global_options = array(
         'workshop' => isset($_POST['global_workshop']) ? sanitize_text_field($_POST['global_workshop']) : 'no',
         'conference_type' => sanitize_text_field($_POST['global_conference_type'] ?? 'none')
     );
 
-    // Build registering_for string based on global options
     $registering_parts = array();
     if ($global_options['workshop'] === 'yes') {
         $registering_parts[] = 'workshop';
@@ -181,13 +178,10 @@ function nsa_save_bulk_registrations() {
         wp_send_json_error('Please select at least one registration option (Workshop or Conference)');
     }
 
-    // Get global "How did you hear about this event?"
     $global_hear_about = sanitize_text_field($_POST['global_hear_about'] ?? '');
 
-    // Format who_paid as "OrgName|orgemail"
     $who_paid = $org_name . '|' . $org_email;
 
-    // Get attendees data
     $attendees_raw = stripslashes($_POST['attendees'] ?? '[]');
     $attendees = json_decode($attendees_raw, true);
 
@@ -195,22 +189,19 @@ function nsa_save_bulk_registrations() {
         wp_send_json_error('No attendees data provided');
     }
 
-    // Required fields for each attendee (address fields removed)
     $required_fields = [
         'title', 'first_name', 'last_name', 'email', 'phone', 'gender'
     ];
-    
-    $inserted_ids = [];
-    $errors = [];
     $ip_address = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '');
+
+    $clean_attendees = array();
+    $errors = array();
 
     foreach ($attendees as $index => $attendee) {
         $attendee_num = $index + 1;
-        
-        // Sanitize all fields
+
         $data = array(
             'member_id' => sanitize_text_field($attendee['member_id'] ?? ''),
-            'registering_for' => $global_registering_for, // Use global registration options
             'title' => sanitize_text_field($attendee['title'] ?? ''),
             'first_name' => sanitize_text_field($attendee['first_name'] ?? ''),
             'middle_name' => sanitize_text_field($attendee['middle_name'] ?? ''),
@@ -218,62 +209,83 @@ function nsa_save_bulk_registrations() {
             'email' => sanitize_email($attendee['email'] ?? ''),
             'phone' => sanitize_text_field($attendee['phone'] ?? ''),
             'occupation' => sanitize_text_field($attendee['occupation'] ?? ''),
-            'organisation' => $org_name,
-            'street' => '', // Empty string - address removed
-            'city' => '', // Empty string - address removed
-            'state' => '', // Empty string - address removed
-            'postcode' => '', // Empty string - address removed
-            'country' => 'NG', // Default country
             'gender' => sanitize_text_field($attendee['gender'] ?? ''),
-            'hear_about' => $global_hear_about, // Use global value
-            'payment_status' => 'pending',
-            'who_paid' => $who_paid,
-            'ip_address' => $ip_address,
         );
 
-        // Validate required fields
         foreach ($required_fields as $field) {
             if (empty($data[$field])) {
                 $errors[] = "Attendee {$attendee_num}: missing required field '{$field}'";
             }
         }
 
-        // Validate email format
         if (!empty($data['email']) && !is_email($data['email'])) {
             $errors[] = "Attendee {$attendee_num}: invalid email address";
         }
 
-        // Insert if no errors
-        if (empty($errors)) {
-            $result = $wpdb->insert($table_name, $data);
-            
-            if ($result !== false) {
-                $inserted_ids[] = $wpdb->insert_id;
-            } else {
-                $errors[] = "Attendee {$attendee_num}: database error - " . $wpdb->last_error;
-            }
+        $is_member = (isset($attendee['is_member']) && $attendee['is_member'] === 'yes');
+        if ($is_member && !preg_match('/^[0-9]{8}$/', $data['member_id'])) {
+            $errors[] = "Attendee {$attendee_num}: a valid 8-digit CISON member ID is required";
         }
+
+        $clean_attendees[] = $data;
     }
 
-    // Return response
     if (!empty($errors)) {
         wp_send_json_error(array(
             'message' => 'Registration validation failed',
             'errors' => $errors
         ));
-    } else {
-        // Store registration IDs in session for later linking
-        if (WC()->session) {
-            WC()->session->set('nsa_registration_ids', json_encode($inserted_ids));
+    }
+
+    $inserted_ids = array();
+    $insert_errors = array();
+
+    foreach ($clean_attendees as $index => $data) {
+        $attendee_num = $index + 1;
+
+        $data['registering_for'] = $global_registering_for;
+        $data['organisation'] = $org_name;
+        $data['street'] = '';
+        $data['city'] = '';
+        $data['state'] = '';
+        $data['postcode'] = '';
+        $data['country'] = 'NG';
+        $data['hear_about'] = $global_hear_about;
+        $data['payment_status'] = 'pending';
+        $data['who_paid'] = $who_paid;
+        $data['ip_address'] = $ip_address;
+
+        $result = $wpdb->insert($table_name, $data);
+
+        if ($result !== false) {
+            $inserted_ids[] = $wpdb->insert_id;
+        } else {
+            $insert_errors[] = "Attendee {$attendee_num}: database error - " . $wpdb->last_error;
         }
-        
-        wp_send_json_success(array(
-            'message' => count($inserted_ids) . ' registration(s) saved successfully',
-            'registration_ids' => $inserted_ids,
-            'count' => count($inserted_ids),
-            'registering_for' => $global_registering_for
+    }
+
+    if (!empty($insert_errors)) {
+        wp_send_json_error(array(
+            'message' => 'Some registrations could not be saved',
+            'errors' => $insert_errors,
+            'saved_count' => count($inserted_ids),
+            'registration_ids' => $inserted_ids
         ));
     }
+
+    if (class_exists('WooCommerce') && WC() && WC()->session) {
+        if (!WC()->session->has_session()) {
+            WC()->session->set_customer_session_cookie(true);
+        }
+        WC()->session->set('nsa_registration_ids', $inserted_ids);
+    }
+        
+    wp_send_json_success(array(
+        'message' => count($inserted_ids) . ' registration(s) saved successfully',
+        'registration_ids' => $inserted_ids,
+        'count' => count($inserted_ids),
+        'registering_for' => $global_registering_for
+    ));
 }
 add_action('wp_ajax_nsa_save_registrations', 'nsa_save_bulk_registrations');
 add_action('wp_ajax_nopriv_nsa_save_registrations', 'nsa_save_bulk_registrations');
@@ -282,17 +294,30 @@ add_action('wp_ajax_nopriv_nsa_save_registrations', 'nsa_save_bulk_registrations
 // 6. LINK REGISTRATIONS TO ORDER AFTER PAYMENT
 // ============================================================
 function nsa_link_registrations_to_order($order_id) {
-    if (!WC()->session) {
+    if (!class_exists('WooCommerce') || !function_exists('WC') || !WC()) {
         return;
     }
     
-    $ids_json = WC()->session->get('nsa_registration_ids');
-    if (!$ids_json) {
-        return;
+    $ids = get_post_meta($order_id, '_nsa_registration_ids', true);
+    if (is_array($ids)) {
+        $ids = array_filter(array_map('intval', $ids));
+    } else {
+        $ids = array();
     }
-    
-    $ids = json_decode($ids_json, true);
-    if (!is_array($ids) || empty($ids)) {
+
+    if (empty($ids) && WC()->session) {
+        $session_ids = WC()->session->get('nsa_registration_ids');
+        if (is_array($session_ids)) {
+            $ids = array_filter(array_map('intval', $session_ids));
+        } elseif ($session_ids) {
+            $decoded = json_decode($session_ids, true);
+            $ids = is_array($decoded) ? array_filter(array_map('intval', $decoded)) : array();
+        } else {
+            $ids = array();
+        }
+    }
+
+    if (empty($ids)) {
         return;
     }
     
@@ -312,11 +337,26 @@ function nsa_link_registrations_to_order($order_id) {
         );
     }
     
-    // Clear session data
-    WC()->session->__unset('nsa_registration_ids');
+    delete_post_meta($order_id, '_nsa_registration_ids');
+
+    if (WC()->session) {
+        WC()->session->__unset('nsa_registration_ids');
+    }
 }
 add_action('woocommerce_payment_complete', 'nsa_link_registrations_to_order');
 add_action('woocommerce_order_status_completed', 'nsa_link_registrations_to_order');
+
+function store_nsa_registration_ids_on_order($order_id, $data) {
+    if (!class_exists('WooCommerce') || !function_exists('WC') || !WC() || !WC()->session) {
+        return;
+    }
+
+    $ids = WC()->session->get('nsa_registration_ids');
+    if (is_array($ids) && !empty($ids)) {
+        update_post_meta($order_id, '_nsa_registration_ids', array_map('intval', $ids));
+    }
+}
+add_action('woocommerce_checkout_update_order_meta', 'store_nsa_registration_ids_on_order', 10, 2);
 
 // ============================================================
 // 7. SHORTCODE FOR REGISTRATION FORM (No Address, Global Hear About)
@@ -1231,7 +1271,8 @@ function nsa_registration_form_shortcode() {
                     phone: $card.find('[data-field="phone"]').val(),
                     occupation: $card.find('[data-field="occupation"]').val(),
                     gender: $card.find('[data-field="gender"]').val(),
-                    member_id: $card.find('[data-field="member_id"]').val() || ''
+                    member_id: $card.find('[data-field="member_id"]').val() || '',
+                    is_member: $card.find('input[name^="is_member"]:checked').val() || 'no'
                 };
                 
                 attendees.push(attendee);

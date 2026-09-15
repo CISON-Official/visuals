@@ -99,6 +99,14 @@ function ajax_load_wc_checkout()
 {
     check_ajax_referer('registration_nonce', 'nonce');
 
+    if (!class_exists('WooCommerce') || !WC()) {
+        wp_send_json_error('WooCommerce unavailable');
+        wp_die();
+    }
+    if (!WC()->cart) {
+        WC()->initialize_cart();
+    }
+
     if (!WC()->cart->is_empty()) {
         ob_start();
         echo do_shortcode('[woocommerce_checkout]');
@@ -119,6 +127,10 @@ add_action('wp_ajax_nopriv_load_wc_checkout', 'ajax_load_wc_checkout');
 // ============================================================
 function ajax_clear_cart()
 {
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'registration_nonce')) {
+        wp_send_json_error('Invalid nonce');
+        wp_die();
+    }
     if (!function_exists('WC')) {
         wp_send_json_success('WC not loaded');
         wp_die();
@@ -190,6 +202,12 @@ function ajax_save_registration()
     $result = $wpdb->insert($table_name, $data);
 
     if ($result !== false) {
+        if (class_exists('WooCommerce') && WC() && WC()->session) {
+            if (!WC()->session->has_session()) {
+                WC()->session->set_customer_session_cookie(true);
+            }
+            WC()->session->set('nsa_registration_id', (int) $wpdb->insert_id);
+        }
         wp_send_json_success(array(
             'registration_id' => $wpdb->insert_id,
             'message' => 'Registration saved successfully',
@@ -208,9 +226,19 @@ add_action('wp_ajax_nopriv_save_registration', 'ajax_save_registration');
 // ============================================================
 function link_registration_to_order($order_id)
 {
-    $registration_id = WC()->session ? WC()->session->get('nsa_registration_id') : 0;
-    if (!$registration_id)
+    if (!class_exists('WooCommerce') || !function_exists('WC') || !WC()) {
         return;
+    }
+
+    $registration_id = (int) get_post_meta($order_id, '_nsa_registration_id', true);
+
+    if (!$registration_id && WC()->session) {
+        $registration_id = (int) WC()->session->get('nsa_registration_id');
+    }
+
+    if (!$registration_id) {
+        return;
+    }
 
     global $wpdb;
     $table_name = $wpdb->prefix . 'nsa_registrations';
@@ -223,9 +251,26 @@ function link_registration_to_order($order_id)
         array('%d')
     );
 
-    WC()->session->__unset('nsa_registration_id');
+    delete_post_meta($order_id, '_nsa_registration_id');
+
+    if (WC()->session) {
+        WC()->session->__unset('nsa_registration_id');
+    }
 }
 add_action('woocommerce_payment_complete', 'link_registration_to_order');
+
+function store_nsa_registration_id_on_order($order_id, $data)
+{
+    if (!class_exists('WooCommerce') || !function_exists('WC') || !WC() || !WC()->session) {
+        return;
+    }
+
+    $registration_id = (int) WC()->session->get('nsa_registration_id');
+    if ($registration_id) {
+        update_post_meta($order_id, '_nsa_registration_id', $registration_id);
+    }
+}
+add_action('woocommerce_checkout_update_order_meta', 'store_nsa_registration_id_on_order', 10, 2);
 
 
 // ============================================================
@@ -526,8 +571,8 @@ function add_registration_script()
         var PRODUCTS = {
             preconference_onsite  : 12816,
             preconference_virtual : 14302,
-            conference_onsite     : 14270,
-            conference_virtual    : 14271
+            conference_onsite     : 12817,
+            conference_virtual    : 12818
         };
 
         // ── Resolve which product IDs are currently selected ─────────────────

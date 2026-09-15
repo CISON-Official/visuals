@@ -382,6 +382,10 @@ function alter_fellowship_registration_table()
         $alter_clauses[] = "ADD COLUMN certificates text NULL AFTER publications";
     }
 
+    if (!in_array('cv', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN cv text NULL AFTER certificates";
+    }
+
     if ($alter_clauses) {
         $wpdb->query("ALTER TABLE $table_name " . implode(', ', $alter_clauses));
     }
