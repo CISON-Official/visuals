@@ -378,6 +378,10 @@ function alter_fellowship_registration_table()
         $alter_clauses[] = "ADD COLUMN sponsor_2_data longtext NULL AFTER sponsor_2_status";
     }
 
+    if (!in_array('certificates', $columns, true)) {
+        $alter_clauses[] = "ADD COLUMN certificates text NULL AFTER publications";
+    }
+
     if ($alter_clauses) {
         $wpdb->query("ALTER TABLE $table_name " . implode(', ', $alter_clauses));
     }

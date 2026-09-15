@@ -315,6 +315,59 @@ function cison_fellowship_handle_applicant_signature_upload()
     return null;
 }
 
+/**
+ * Handle the optional multi-file certificate upload (field name "certificates").
+ * Returns an array of file URLs, or null when no (valid) files were uploaded.
+ */
+function cison_fellowship_handle_certificates_upload()
+{
+    if (empty($_FILES['certificates']) || !is_array($_FILES['certificates']['name'] ?? null)) {
+        return null;
+    }
+
+    $allowed_mimes = array('image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf');
+    $allowed_exts  = array('jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf');
+    $max_size      = 2 * 1024 * 1024;
+
+    $uploaded = array();
+    $count = count($_FILES['certificates']['name']);
+
+    for ($i = 0; $i < $count; $i++) {
+        $error = $_FILES['certificates']['error'][$i] ?? UPLOAD_ERR_NO_FILE;
+        $name  = $_FILES['certificates']['name'][$i] ?? '';
+
+        if ($error !== UPLOAD_ERR_OK || $name === '') {
+            continue;
+        }
+
+        $filetype = wp_check_filetype($name);
+        if (!in_array(strtolower($filetype['ext']), $allowed_exts, true)) {
+            continue;
+        }
+
+        $size = $_FILES['certificates']['size'][$i] ?? 0;
+        if ((int) $size > $max_size) {
+            continue;
+        }
+
+        $upload_dir = wp_upload_dir();
+        $cert_dir = $upload_dir['path'] . '/fellowship_certificates';
+
+        if (!file_exists($cert_dir)) {
+            wp_mkdir_p($cert_dir);
+        }
+
+        $filename = 'cert_' . time() . '_' . $i . '_' . sanitize_file_name($name);
+        $filepath = $cert_dir . '/' . $filename;
+
+        if (move_uploaded_file($_FILES['certificates']['tmp_name'][$i], $filepath)) {
+            $uploaded[] = $upload_dir['url'] . '/fellowship_certificates/' . $filename;
+        }
+    }
+
+    return !empty($uploaded) ? $uploaded : null;
+}
+
 function cison_fellowship_validate($data)
 {
     $errors = array();
@@ -636,6 +689,20 @@ function cison_fellowship_build_submission_summary($row)
     $html .= '<h3 style="margin:22px 0 10px;color:#0f766e;font-family:Arial,sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:0.04em;">' . esc_html__('Publications / Contribution', 'cison') . '</h3>';
     $html .= cison_fellowship_email_block($row['publications'] ?: 'N/A');
 
+    $certificates = !empty($row['certificates']) ? json_decode($row['certificates'], true) : array();
+    if (is_array($certificates) && !empty($certificates)) {
+        $html .= '<h3 style="margin:22px 0 10px;color:#0f766e;font-family:Arial,sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:0.04em;">' . esc_html__('Certificates', 'cison') . '</h3>';
+        $html .= '<table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">';
+        foreach ($certificates as $cert_url) {
+            $html .= '<tr>';
+            $html .= '<td style="padding:8px 10px;border:1px solid #e2e8f0;color:#0f172a;vertical-align:top;">';
+            $html .= '<a href="' . esc_url($cert_url) . '" style="color:#0f766e;font-weight:600;text-decoration:none;">' . esc_html(basename(parse_url($cert_url, PHP_URL_PATH))) . '</a>';
+            $html .= '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</table>';
+    }
+
     return $html;
 }
 
@@ -715,6 +782,26 @@ function cison_fellowship_get_signature_attachments($row)
     return $attachments;
 }
 
+function cison_fellowship_get_certificate_attachments($row)
+{
+    $attachments = array();
+
+    $certificates = !empty($row['certificates']) ? json_decode($row['certificates'], true) : array();
+    if (!is_array($certificates)) {
+        return $attachments;
+    }
+
+    foreach ($certificates as $url) {
+        $path = cison_fellowship_url_to_path($url);
+
+        if ($path && is_file($path)) {
+            $attachments[] = $path;
+        }
+    }
+
+    return $attachments;
+}
+
 function cison_fellowship_render_status_badge($status)
 {
     $normalized = strtolower(trim((string) $status));
@@ -746,6 +833,11 @@ function cison_fellowship_handle_applicant_submission()
     $signature_url = cison_fellowship_handle_applicant_signature_upload();
     if ($signature_url) {
         $data['signature'] = $signature_url;
+    }
+
+    $certificates = cison_fellowship_handle_certificates_upload();
+    if (!empty($certificates)) {
+        $data['certificates'] = array_map('esc_url_raw', $certificates);
     }
 
     if (!class_exists('WooCommerce') || !WC()) {
@@ -967,7 +1059,10 @@ function cison_fellowship_handle_send_submission_email()
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
     );
-    $attachments = cison_fellowship_get_signature_attachments($row);
+    $attachments = array_merge(
+        cison_fellowship_get_signature_attachments($row),
+        cison_fellowship_get_certificate_attachments($row)
+    );
 
     $mail_error = '';
     add_action('wp_mail_failed', function ($wp_error) use (&$mail_error) {
@@ -1100,8 +1195,9 @@ function cison_fellowship_save_on_payment_complete($order_id)
         'area_of_practice' => $data['area_of_practice'],
         'academic_qualifications' => cison_fellowship_qualifications_to_string($data['academic_qualifications']),
         'professional_experience' => $data['professional_experience'],
-        'publications' => $data['publications'],
-        'signature' => $data['signature'] ?? '',
+'publications'          => $data['publications'],
+        'certificates'          => !empty($data['certificates']) ? wp_json_encode(array_values($data['certificates'])) : '',
+        'signature'             => $data['signature'] ?? '',
         'num_sponsors' => 2,
         'product_ids' => $product_ids,
         'payment_status' => 'paid',
@@ -1641,6 +1737,20 @@ function cison_fellowship_form_shortcode()
                     </div>
                 </div>
 
+                <div class="cison-fs__section js-form-section" data-section="certificates">
+                    <h4>Certificates</h4>
+                    <div class="cison-fs__grid">
+                        <div>
+                            <label for="cison_fs_certificates">Upload Certificates</label>
+                            <input id="cison_fs_certificates" type="file" name="certificates[]"
+                                accept=".jpg,.jpeg,.png,.gif,.webp,.pdf" multiple>
+                            <span class="cison-fs__help">Upload as many certificates as you like (e.g. professional
+                                licences, qualifications, certifications). Accepted formats: JPG, PNG, GIF, PDF. Max
+                                size: 2MB each.</span>
+                        </div>
+                    </div>
+                </div>
+
                 <?php if ($has_valid_token): ?>
                     <div class="cison-fs__section js-form-section" data-section="sponsors">
                         <h4>Sponsors</h4>
@@ -2155,6 +2265,29 @@ function cison_fellowship_submission_detail_shortcode()
                 <div class="cison-fs-detail__text-block">
                     <?php echo esc_html($row['publications'] ?: 'No details provided.'); ?>
                 </div>
+            </div>
+
+            <div class="cison-fs-detail__card">
+                <h4>Certificates</h4>
+                <?php
+                $certificates = !empty($row['certificates']) ? json_decode($row['certificates'], true) : array();
+                $certificates = is_array($certificates) ? $certificates : array();
+                ?>
+                <?php if (!empty($certificates)): ?>
+                    <div class="cison-fs-detail__text-block">
+                        <ul class="cison-fs-detail__file-list">
+                            <?php foreach ($certificates as $cert_url): ?>
+                                <li>
+                                    <a href="<?php echo esc_url($cert_url); ?>" target="_blank" rel="noopener">
+                                        <?php echo esc_html(basename(parse_url($cert_url, PHP_URL_PATH))); ?>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php else: ?>
+                    <p class="cison-fs-detail__empty">No certificates uploaded.</p>
+                <?php endif; ?>
             </div>
 
             <div class="cison-fs-detail__card">
@@ -2899,6 +3032,33 @@ function cison_fellowship_submission_detail_styles()
             color: #334155;
             line-height: 1.6;
             white-space: pre-wrap;
+        }
+
+        .cison-fs-detail__file-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            white-space: normal;
+        }
+
+        .cison-fs-detail__file-list li {
+            padding: 6px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .cison-fs-detail__file-list li:last-child {
+            border-bottom: none;
+        }
+
+        .cison-fs-detail__file-list a {
+            color: #0f766e;
+            font-weight: 600;
+            text-decoration: none;
+            word-break: break-all;
+        }
+
+        .cison-fs-detail__file-list a:hover {
+            text-decoration: underline;
         }
 
         .cison-fs-detail__empty {
