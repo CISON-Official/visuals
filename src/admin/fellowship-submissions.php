@@ -387,8 +387,9 @@ class CISON_Fellowship_Submissions_Admin
             $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'not-found'));
         }
 
-        // Sponsorship is complete once Sponsor 2 has submitted; nothing to resend.
-        if (($row['sponsor_2_status'] ?? '') === 'submitted') {
+        // Sponsorship is complete once Sponsor 2 has submitted (or waived for NSA fellows);
+        // nothing to resend in those cases.
+        if (($row['sponsor_2_status'] ?? '') === 'submitted' || ($row['sponsor_1_status'] ?? '') === 'waived') {
             $this->redirect('view', array('ref' => $ref, 'fs_notice' => 'email-complete'));
         }
 
@@ -525,10 +526,15 @@ class CISON_Fellowship_Submissions_Admin
             __('Date', 'cison')               => $s1_data['date'] ?? 'N/A',
             __('Signature', 'cison')          => !empty($s1_data['signature']) ? $s1_data['signature'] : 'N/A',
         ) : array();
+
+        if (($row['sponsor_1_status'] ?? '') === 'waived') {
+            $s1_fields = array(__('Sponsorship', 'cison') => __('Not required (NSA Fellow)', 'cison'));
+        }
+
         $this->detail_card(
             __('Sponsor 1', 'cison') . ' &mdash; ' . cison_fellowship_render_status_badge($row['sponsor_1_status'] ?? 'pending'),
             $s1_fields,
-            empty($s1_data)
+            empty($s1_fields)
         );
 
         // Sponsor 2
@@ -540,10 +546,15 @@ class CISON_Fellowship_Submissions_Admin
             __('Date', 'cison')               => $s2_data['date'] ?? 'N/A',
             __('Signature', 'cison')          => !empty($s2_data['signature']) ? $s2_data['signature'] : 'N/A',
         ) : array();
+
+        if (($row['sponsor_2_status'] ?? '') === 'waived') {
+            $s2_fields = array(__('Sponsorship', 'cison') => __('Not required (NSA Fellow)', 'cison'));
+        }
+
         $this->detail_card(
             __('Sponsor 2', 'cison') . ' &mdash; ' . cison_fellowship_render_status_badge($row['sponsor_2_status'] ?? 'pending'),
             $s2_fields,
-            empty($s2_data)
+            empty($s2_fields)
         );
 
         // Qualifications
@@ -855,7 +866,7 @@ class CISON_Fellowship_Submissions_Admin
 
         echo '<h2>' . esc_html__('Sponsor 1', 'cison') . '</h2>';
         echo '<table class="form-table" role="presentation"><tbody>';
-        $this->form_row_select('sponsor_1_status', __('Sponsor 1 Status', 'cison'), array('pending', 'submitted', 'approved', 'rejected'), $row['sponsor_1_status']);
+        $this->form_row_select('sponsor_1_status', __('Sponsor 1 Status', 'cison'), array('pending', 'submitted', 'waived', 'approved', 'rejected'), $row['sponsor_1_status']);
         $this->form_row_text('sponsor_1_name', __('Full Name', 'cison'), $s1_data['name'] ?? '');
         $this->form_row_text('sponsor_1_membership_id', __('Membership ID', 'cison'), $s1_data['membership_id'] ?? '');
         $this->form_row_text('sponsor_1_membership_status', __('Membership Status', 'cison'), $s1_data['membership_status'] ?? '');
@@ -866,7 +877,7 @@ class CISON_Fellowship_Submissions_Admin
 
         echo '<h2>' . esc_html__('Sponsor 2', 'cison') . '</h2>';
         echo '<table class="form-table" role="presentation"><tbody>';
-        $this->form_row_select('sponsor_2_status', __('Sponsor 2 Status', 'cison'), array('pending', 'submitted', 'approved', 'rejected'), $row['sponsor_2_status']);
+        $this->form_row_select('sponsor_2_status', __('Sponsor 2 Status', 'cison'), array('pending', 'submitted', 'waived', 'approved', 'rejected'), $row['sponsor_2_status']);
         $this->form_row_text('sponsor_2_name', __('Full Name', 'cison'), $s2_data['name'] ?? '');
         $this->form_row_text('sponsor_2_membership_id', __('Membership ID', 'cison'), $s2_data['membership_id'] ?? '');
         $this->form_row_text('sponsor_2_membership_status', __('Membership Status', 'cison'), $s2_data['membership_status'] ?? '');

@@ -581,6 +581,10 @@ function cison_fellowship_get_token_status($application)
     if (($application['sponsor_2_status'] ?? '') === 'submitted') {
         return 'complete';
     }
+    // NSA fellows: sponsors waived → application is complete as-is.
+    if (($application['sponsor_1_status'] ?? '') === 'waived') {
+        return 'complete';
+    }
     if (($application['sponsor_1_status'] ?? '') === 'submitted') {
         return 's2';
     }
@@ -622,6 +626,9 @@ function cison_fellowship_build_submission_summary($row)
     $s1_data = !empty($row['sponsor_1_data']) ? json_decode($row['sponsor_1_data'], true) : array();
     $s2_data = !empty($row['sponsor_2_data']) ? json_decode($row['sponsor_2_data'], true) : array();
 
+    // NSA fellows do not require sponsorship.
+    $sponsors_waived = (($row['sponsor_1_status'] ?? '') === 'waived');
+
     $rows = array(
         __('Applicant Details', 'cison') => array(
             'Reference Number' => $row['reference_number'] ?? 'N/A',
@@ -639,23 +646,30 @@ function cison_fellowship_build_submission_summary($row)
             'Area of Statistics' => $row['area_of_practice'] ?? 'N/A',
             'Signature' => $row['signature'] ?? '',
         ),
-        __('Sponsor 1', 'cison') . ' (' . ($row['sponsor_1_status'] ?? 'pending') . ')' => array(
+    );
+
+    if ($sponsors_waived) {
+        $rows[__('Sponsorship', 'cison')] = array(
+            'Sponsors Required' => __('No — waived for NSA Fellow.', 'cison'),
+        );
+    } else {
+        $rows[__('Sponsor 1', 'cison') . ' (' . ($row['sponsor_1_status'] ?? 'pending') . ')'] = array(
             'Name' => $s1_data['name'] ?? 'N/A',
             'Membership ID' => $s1_data['membership_id'] ?? 'N/A',
             'Membership Status' => $s1_data['membership_status'] ?? 'N/A',
             'Rank' => $s1_data['rank'] ?? 'N/A',
             'Date' => $s1_data['date'] ?? 'N/A',
             'Signature' => $s1_data['signature'] ?? '',
-        ),
-        __('Sponsor 2', 'cison') . ' (' . ($row['sponsor_2_status'] ?? 'pending') . ')' => array(
+        );
+        $rows[__('Sponsor 2', 'cison') . ' (' . ($row['sponsor_2_status'] ?? 'pending') . ')'] = array(
             'Name' => $s2_data['name'] ?? 'N/A',
             'Membership ID' => $s2_data['membership_id'] ?? 'N/A',
             'Membership Status' => $s2_data['membership_status'] ?? 'N/A',
             'Rank' => $s2_data['rank'] ?? 'N/A',
             'Date' => $s2_data['date'] ?? 'N/A',
             'Signature' => $s2_data['signature'] ?? '',
-        ),
-    );
+        );
+    }
 
     $html = '';
     $html .= '<h2 style="margin:0 0 18px;color:#0f172a;font-family:Arial,sans-serif;">Fellowship Submission</h2>';
@@ -1206,8 +1220,8 @@ function cison_fellowship_save_on_payment_complete($order_id)
         'updated_at' => current_time('mysql'),
         'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
         'sponsor_token' => $token,
-        'sponsor_1_status' => 'pending',
-        'sponsor_2_status' => 'pending',
+        'sponsor_1_status' => $is_nsa_fellow ? 'waived' : 'pending',
+        'sponsor_2_status' => $is_nsa_fellow ? 'waived' : 'pending',
     );
 
     $inserted = $wpdb->insert($table_name, $insert_data);
@@ -1233,6 +1247,33 @@ function cison_fellowship_send_applicant_email($data, $token)
     }
 
     $first_name = $data['first_name'] ?: 'Applicant';
+    $is_nsa_fellow = strtolower($data['is_nsa_fellow'] ?? '') === 'yes';
+
+    $headers = array('Content-Type: text/html; charset=UTF-8');
+
+    // NSA fellows do not require sponsorship; send a simple confirmation.
+    if ($is_nsa_fellow) {
+        $subject = apply_filters(
+            'cison_fellowship_email_subject',
+            'Your CISON Fellowship Application: Received'
+        );
+
+        $message_html = sprintf(
+            '<p>Dear %s,</p>' .
+            '<p>Thank you for applying to become a <strong>CISON Fellow</strong>! ' .
+            'Your payment has been received successfully.</p>' .
+            '<p>As a current <strong>NSA Fellow</strong>, sponsorship endorsement is not required for your application.</p>' .
+            '<p>Your application has been submitted and will be reviewed by the fellowship committee. ' .
+            'We will contact you once a decision has been made.</p>' .
+            '<p>If you have any questions, please contact us for assistance.</p>' .
+            '<p>Best regards,<br>CISON Fellowship Committee</p>',
+            esc_html($first_name)
+        );
+
+        return wp_mail($email, $subject, $message_html, $headers);
+    }
+
+    // Standard applicants need two sponsors.
     $sponsor_link = cison_fellowship_sponsor_link($token);
 
     $subject = apply_filters(
@@ -2299,7 +2340,9 @@ function cison_fellowship_submission_detail_shortcode()
             <div class="cison-fs-detail__card">
                 <h4>Sponsor 1 — <?php echo cison_fellowship_render_status_badge($row['sponsor_1_status'] ?? 'pending'); ?>
                 </h4>
-                <?php if (!empty($s1_data)): ?>
+                <?php if (($row['sponsor_1_status'] ?? '') === 'waived'): ?>
+                    <p class="cison-fs-detail__empty">Sponsorship not required — NSA Fellow.</p>
+                <?php elseif (!empty($s1_data)): ?>
                     <div class="cison-fs-detail__fields">
                         <div class="cison-fs-detail__field">
                             <span class="cison-fs-detail__label">Full Name</span>
@@ -2339,7 +2382,9 @@ function cison_fellowship_submission_detail_shortcode()
             <div class="cison-fs-detail__card">
                 <h4>Sponsor 2 — <?php echo cison_fellowship_render_status_badge($row['sponsor_2_status'] ?? 'pending'); ?>
                 </h4>
-                <?php if (!empty($s2_data)): ?>
+                <?php if (($row['sponsor_2_status'] ?? '') === 'waived'): ?>
+                    <p class="cison-fs-detail__empty">Sponsorship not required — NSA Fellow.</p>
+                <?php elseif (!empty($s2_data)): ?>
                     <div class="cison-fs-detail__fields">
                         <div class="cison-fs-detail__field">
                             <span class="cison-fs-detail__label">Full Name</span>
@@ -2987,6 +3032,11 @@ function cison_fellowship_submissions_styles()
         .cison-fs-badge--pending {
             background: #fef3c7;
             color: #92400e;
+        }
+
+        .cison-fs-badge--waived {
+            background: #e5e7eb;
+            color: #6b7280;
         }
 
         .cison-fs-badge--rejected,
