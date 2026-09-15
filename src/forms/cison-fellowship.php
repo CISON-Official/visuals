@@ -3361,6 +3361,11 @@ function cison_fellowship_render_scripts($is_member = false, $is_nsa_fellow = fa
                         section.style.display = "none";
                         return;
                     }
+                    // Certificates are available to every applicant regardless of membership status.
+                    if (sectionName === "certificates") {
+                        section.style.display = "";
+                        return;
+                    }
                     section.style.display = showSections ? "" : "none";
                 });
 
