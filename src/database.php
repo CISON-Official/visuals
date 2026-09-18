@@ -485,8 +485,8 @@ function create_databases()
 {
     global $wpdb;
 
-    create_nsa_registration_table();
-    alter_nsa_registration_table();
+    // create_nsa_registration_table();
+    // alter_nsa_registration_table();
     create_examination_registration_table();
     alter_examination_registration_table();
     create_fellowship_registration_table();
