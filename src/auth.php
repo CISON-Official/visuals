@@ -10,6 +10,7 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
+	'/fellowship-fellow-payment/',
         '/donation/',
         '/fellowship-application/',
         '/q3-prs-student-registration/',
