@@ -4,13 +4,19 @@ add_action('bp_template_redirect', 'cison_custom_guest_access_control', 1);
 
 function cison_custom_guest_access_control()
 {
-
     if (is_user_logged_in()) {
         return;
     }
 
+    $current_uri = $_SERVER['REQUEST_URI'];
+
+    // 1. Explicitly catch any WooCommerce Order Pay request (handles IDs and query strings cleanly)
+    if (strpos($current_uri, '/checkout/order-pay/') !== false) {
+        return; // Allow public access immediately
+    }
+
     $public_uris = array(
-	'/fellowship-fellow-payment/',
+        '/fellowship-fellow-payment/',
         '/donation/',
         '/fellowship-application/',
         '/q3-prs-student-registration/',
@@ -26,7 +32,6 @@ function cison_custom_guest_access_control()
         '/2nd-quarter-prs-student-registration/',
         '/2nd-prs-individual-registration/',
         '/corporate-prs-2nd-quarter-registration/',
-        // '/examination-submissions/',
         '/checkout/',
         '/checkout/order-received/',
         '/register/',
@@ -45,7 +50,6 @@ function cison_custom_guest_access_control()
         '/verify-certificate/',
         '/product-category/conference/',
         '/cart/',
-        '/checkout/',
         '/maintenance/',
         '/product/prs-participants/',
         '/product/prs-organization-1st-quarter/',
@@ -55,9 +59,6 @@ function cison_custom_guest_access_control()
         '/q1-2026-planning-research-and-statistics-prs/',
         '/student-registration-page/',
         '/3rd-workshop-preconference-and-conference-registration/',
-        '/checkout/',
-        '/checkout/order-received/',
-        '/checkout/order-pay/',
         '/12724-2/',
         '/product/conference-fee-virtual/',
         '/product/annual-conference-on-site-and-pre-conference-workshop/',
@@ -69,8 +70,6 @@ function cison_custom_guest_access_control()
         '/product/annual-conference-on-site-non-member/'
     );
 
-    $current_uri = $_SERVER['REQUEST_URI'];
-
     $is_allowed = false;
     foreach ($public_uris as $uri) {
         if (strpos($current_uri, $uri) !== false) {
@@ -79,14 +78,7 @@ function cison_custom_guest_access_control()
         }
     }
 
-    // if (strpos($current_uri, 'cison-members/me/profile/') !== false) {
-    //     if (isset(WC()->cart)) {
-    //         WC()->cart->empty_cart();
-    //     }
-    // }
-
-
-    if (!$is_allowed && !is_page('login') && !strpos($current_uri, 'wp-login.php')) {
+    if (!$is_allowed && !is_page('login') && strpos($current_uri, 'wp-login.php') === false) {
         bp_core_no_access(array(
             'root' => home_url('members/wp-login.php'),
             'redirect' => home_url($current_uri),
@@ -94,6 +86,7 @@ function cison_custom_guest_access_control()
         ));
     }
 }
+
 
 add_action('template_redirect', 'cison_maybe_clear_profile_cart');
 
