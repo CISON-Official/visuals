@@ -143,9 +143,15 @@ function list_secure_links_content_template()
         .u-8b4e1350 {
             list-style: none;
             padding: 0;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 24px;
+            margin: 0;
+        }
+
+        .u-2f9a71d2 {
+            margin-bottom: 16px;
+        }
+
+        .u-2f9a71d2:last-child {
+            margin-bottom: 0;
         }
 
         .u-f4e19b22 {
