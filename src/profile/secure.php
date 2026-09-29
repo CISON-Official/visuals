@@ -40,8 +40,58 @@ function secure_links_content()
     echo list_secure_links_content_template();
 }
 
+function get_secure_links()
+{
+    return array(
+        array(
+            'url' => 'https://my.cison.org.ng/verify-certificate/',
+            'icon' => 'fa-users-cog',
+            'title' => 'Preconference Attendees',
+            'description' => 'Master table of all participants and issued certificates for preconference sessions.',
+            'action' => 'View Attendee Table',
+        ),
+        array(
+            'url' => 'https://my.cison.org.ng/2025-conference-certificate/',
+            'icon' => 'fa-users',
+            'title' => 'Conference Attendees',
+            'description' => 'Full database of 2025 conference attendees and certificate verification status.',
+            'action' => 'View Attendee Table',
+        ),
+        array(
+            'url' => 'https://my.cison.org.ng/corporate-registration/',
+            'icon' => 'fa-address-book',
+            'title' => 'PRS Registration List',
+            'description' => 'Comprehensive table of all individuals registered via the Professional Registration System.',
+            'action' => 'View Registration Table',
+        ),
+        array(
+            'url' => 'https://my.cison.org.ng/2026-workshop-preconference-and-conference-registration-list/',
+            'icon' => 'fa-address-book',
+            'title' => 'Conference Registration List',
+            'description' => 'Comprehensive table of all individuals registering for 2026 conference sessions (virtual and on-site).',
+            'action' => 'View Registration Table',
+        ),
+        array(
+            'url' => 'https://my.cison.org.ng/prs-registration-list/',
+            'icon' => 'fa-address-book',
+            'title' => 'Q2 PRS Registration List',
+            'description' => 'Comprehensive table of all Q2 PRS.',
+            'action' => 'View Table',
+        ),
+        array(
+            'url' => 'https://my.cison.org.ng/fellowship-submissions-2026',
+            'icon' => 'fa-user-graduate',
+            'title' => 'Fellowship Submissions 2026',
+            'description' => 'Table of all fellowship submissions received for 2026.',
+            'action' => 'View Table',
+        ),
+    );
+}
+
 function list_secure_links_content_template()
 {
+    $secure_links = get_secure_links();
+
     ob_start();
     ?>
     <div class="u-6d3e91a2">
@@ -51,61 +101,18 @@ function list_secure_links_content_template()
         </header>
 
         <ul class="u-8b4e1350">
-            <li class="u-2f9a71d2">
-                <a href="https://my.cison.org.ng/verify-certificate/" class="u-f4e19b22">
-                    <div class="u-1d3c5b7a"><i class="fas fa-users-cog"></i></div>
-                    <div class="u-e9b2c8f1">
-                        <h4>Preconference Attendees</h4>
-                        <p>Master table of all participants and issued certificates for preconference sessions.</p>
-                        <span class="u-a73c91eb">View Attendee Table <i class="fas fa-table"></i></span>
-                    </div>
-                </a>
-            </li>
-
-            <li class="u-2f9a71d2">
-                <a href="https://my.cison.org.ng/2025-conference-certificate/" class="u-f4e19b22">
-                    <div class="u-1d3c5b7a"><i class="fas fa-users"></i></div>
-                    <div class="u-e9b2c8f1">
-                        <h4>Conference Attendees</h4>
-                        <p>Full database of 2025 conference attendees and certificate verification status.</p>
-                        <span class="u-a73c91eb">View Attendee Table <i class="fas fa-table"></i></span>
-                    </div>
-                </a>
-            </li>
-
-            <li class="u-2f9a71d2">
-                <a href="https://my.cison.org.ng/corporate-registration/" class="u-f4e19b22">
-                    <div class="u-1d3c5b7a"><i class="fas fa-address-book"></i></div>
-                    <div class="u-e9b2c8f1">
-                        <h4>PRS Registration List</h4>
-                        <p>Comprehensive table of all individuals registered via the Professional Registration System.</p>
-                        <span class="u-a73c91eb">View Registration Table <i class="fas fa-table"></i></span>
-                    </div>
-                </a>
-            </li>
-            <li class="u-2f9a71d2">
-                <a href="https://my.cison.org.ng/2026-workshop-preconference-and-conference-registration-list/"
-                    class="u-f4e19b22">
-                    <div class="u-1d3c5b7a"><i class="fas fa-address-book"></i></div>
-                    <div class="u-e9b2c8f1">
-                        <h4>Conference Registration List</h4>
-                        <p>Comprehensive table of all individuals registering for 2026 conference sessions (virtual and
-                            on-site).</p>
-                        <span class="u-a73c91eb">View Registration Table <i class="fas fa-table"></i></span>
-                    </div>
-                </a>
-            </li>
-             <li class="u-2f9a71d2">
-                <a href="https://my.cison.org.ng/prs-registration-list/"
-                    class="u-f4e19b22">
-                    <div class="u-1d3c5b7a"><i class="fas fa-address-book"></i></div>
-                    <div class="u-e9b2c8f1">
-                        <h4>Q2 PRS Registration List</h4>
-                        <p>Comprehensive table of all Q2 PRS.</p>
-                        <span class="u-a73c91eb">View Table <i class="fas fa-table"></i></span>
-                    </div>
-                </a>
-            </li>
+            <?php foreach ($secure_links as $link) : ?>
+                <li class="u-2f9a71d2">
+                    <a href="<?php echo esc_url($link['url']); ?>" class="u-f4e19b22">
+                        <div class="u-1d3c5b7a"><i class="fas <?php echo esc_attr($link['icon']); ?>"></i></div>
+                        <div class="u-e9b2c8f1">
+                            <h4><?php echo esc_html($link['title']); ?></h4>
+                            <p><?php echo esc_html($link['description']); ?></p>
+                            <span class="u-a73c91eb"><?php echo esc_html($link['action']); ?> <i class="fas fa-table"></i></span>
+                        </div>
+                    </a>
+                </li>
+            <?php endforeach; ?>
         </ul>
     </div>
 
