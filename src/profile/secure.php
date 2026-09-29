@@ -44,40 +44,28 @@ function get_secure_links()
 {
     return array(
         array(
-            'url' => 'https://my.cison.org.ng/verify-certificate/',
-            'icon' => 'fa-users-cog',
-            'title' => 'Preconference Attendees',
-            'description' => 'Master table of all participants and issued certificates for preconference sessions.',
-        ),
-        array(
-            'url' => 'https://my.cison.org.ng/2025-conference-certificate/',
-            'icon' => 'fa-users',
-            'title' => 'Conference Attendees',
-            'description' => 'Full database of 2025 conference attendees and certificate verification status.',
-        ),
-        array(
-            'url' => 'https://my.cison.org.ng/corporate-registration/',
-            'icon' => 'fa-address-book',
-            'title' => 'PRS Registration List',
-            'description' => 'Comprehensive table of all individuals registered via the Professional Registration System.',
+            'url' => 'https://my.cison.org.ng/fellowship-submissions-2026',
+            'title' => 'Fellowship Submissions 2026',
         ),
         array(
             'url' => 'https://my.cison.org.ng/2026-workshop-preconference-and-conference-registration-list/',
-            'icon' => 'fa-address-book',
             'title' => 'Conference Registration List',
-            'description' => 'Comprehensive table of all individuals registering for 2026 conference sessions (virtual and on-site).',
+        ),
+        array(
+            'url' => 'https://my.cison.org.ng/verify-certificate/',
+            'title' => 'Preconference Attendees',
         ),
         array(
             'url' => 'https://my.cison.org.ng/prs-registration-list/',
-            'icon' => 'fa-address-book',
             'title' => 'Q2 PRS Registration List',
-            'description' => 'Comprehensive table of all Q2 PRS.',
         ),
         array(
-            'url' => 'https://my.cison.org.ng/fellowship-submissions-2026',
-            'icon' => 'fa-user-graduate',
-            'title' => 'Fellowship Submissions 2026',
-            'description' => 'Table of all fellowship submissions received for 2026.',
+            'url' => 'https://my.cison.org.ng/corporate-registration/',
+            'title' => 'PRS Registration List',
+        ),
+        array(
+            'url' => 'https://my.cison.org.ng/2025-conference-certificate/',
+            'title' => 'Conference Attendees',
         ),
     );
 }
@@ -98,8 +86,7 @@ function list_secure_links_content_template()
             <?php foreach ($secure_links as $link) : ?>
                 <li class="u-2f9a71d2">
                     <a href="<?php echo esc_url($link['url']); ?>" class="u-f4e19b22">
-                        <h4><i class="fas <?php echo esc_attr($link['icon']); ?>"></i> <?php echo esc_html($link['title']); ?></h4>
-                        <p><?php echo esc_html($link['description']); ?></p>
+                        <h4><?php echo esc_html($link['title']); ?></h4>
                     </a>
                 </li>
             <?php endforeach; ?>
@@ -169,18 +156,6 @@ function list_secure_links_content_template()
             margin: 0 0 6px 0;
             font-size: 1.15rem;
             color: #2d3748;
-        }
-
-        .u-f4e19b22 h4 i {
-            color: #3182ce;
-            margin-right: 8px;
-        }
-
-        .u-f4e19b22 p {
-            font-size: 0.9rem;
-            color: #4a5568;
-            margin: 0;
-            line-height: 1.5;
         }
     </style>
 
