@@ -141,8 +141,8 @@ function list_secure_links_content_template()
         }
 
         .u-8b4e1350 {
-            list-style: none;
-            padding: 0;
+            list-style: decimal outside;
+            padding-left: 36px;
             margin: 0;
         }
 
@@ -154,13 +154,18 @@ function list_secure_links_content_template()
             margin-bottom: 0;
         }
 
+        .u-2f9a71d2::marker {
+            font-weight: 600;
+            color: #3182ce;
+        }
+
         .u-f4e19b22 {
             text-decoration: none;
             background: #ffffff;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             padding: 24px;
-            display: flex;
+            display: block;
             transition: all 0.2s ease-in-out;
         }
 
@@ -176,12 +181,10 @@ function list_secure_links_content_template()
             background: #ebf8ff;
             color: #2b6cb0;
             border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             font-size: 22px;
-            margin-right: 18px;
-            flex-shrink: 0;
+            line-height: 54px;
+            text-align: center;
+            margin-bottom: 14px;
         }
 
         .u-e9b2c8f1 h4 {
@@ -201,28 +204,19 @@ function list_secure_links_content_template()
             font-weight: 600;
             color: #3182ce;
             font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            display: inline-block;
             padding: 6px 12px;
             background: #ebf8ff;
             border-radius: 6px;
         }
 
+        .u-a73c91eb i {
+            margin-left: 6px;
+        }
+
         .u-f4e19b22:hover .u-a73c91eb {
             background: #3182ce;
             color: #ffffff;
-        }
-
-        @media (max-width: 640px) {
-            .u-f4e19b22 {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .u-1d3c5b7a {
-                margin-bottom: 15px;
-            }
         }
     </style>
 
