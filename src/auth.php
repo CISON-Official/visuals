@@ -16,6 +16,7 @@ function cison_custom_guest_access_control()
     }
 
     $public_uris = array(
+        '/preconference-zoom-link/',
         '/fellowship-fellow-payment/',
         '/donation/',
         '/fellowship-application/',
