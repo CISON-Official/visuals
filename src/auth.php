@@ -28,7 +28,7 @@ function cison_custom_guest_access_control()
         '/q4-prs-corporate-registration/',
         '/q3-prs-individual-registration/',
         '/q4-prs-individual-registration/',
-        '/certificate-verifiers/',
+        '/verifiers/',
         '/q2-virtual-prs-registration/',
         '/2nd-quarter-prs-student-registration/',
         '/2nd-prs-individual-registration/',
